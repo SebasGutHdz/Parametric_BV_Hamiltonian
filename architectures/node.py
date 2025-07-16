@@ -122,6 +122,9 @@ class Parametric_NODE():
             parameters: Dict[str, Any], parameters for the forward pass
             t_span: Sequence[float], time span for the ODE solver
             y0: jnp.ndarray [bs,d], initial value of y at t0
+        outputs:
+            y: jnp.ndarray [bs,d], state at each time step in t_span
+            
         '''
         parameters = self.get_parameters(parameters)
         if t_list is None:
@@ -133,14 +136,7 @@ class Parametric_NODE():
 
         rhs = self.closure_rhs(parameters)
         y = self.solver(rhs, t_list, y0, history=history)
-        # dt0 = t_list[1] - t_list[0]
-        # y = diffrax.diffeqsolve(
-        #     terms = rhs,
-        #     solver = self.solver,
-        #     t0 = t_list[0],
-        #     t1 = t_list[-1],
-        #     dt0 = dt0,
-        #     y0 = y0)
+        
         return y
     
     def eval_vf(self, parameters: Optional[Dict[str, Any]] = None,
