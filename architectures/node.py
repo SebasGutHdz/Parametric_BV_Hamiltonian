@@ -9,7 +9,7 @@ import jax.numpy as jnp
 import jax.random as jrandom
 from typing import Callable, Dict, Any, Optional, Sequence
 from architectures.MMNN import MMNN
-from NODEs.solvers import euler_method, heun_method, string_2_solver
+from ODE_solvers.solvers import euler_method, heun_method, string_2_solver
 
 
 
