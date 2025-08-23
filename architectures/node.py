@@ -9,7 +9,7 @@ import jax.numpy as jnp
 import jax.random as jrandom
 from typing import Callable, Dict, Any, Optional, Sequence
 from architectures.MMNN import MMNN
-from ODE_solvers.solvers import euler_method, heun_method, string_2_solver
+from ODE_solvers.solvers import  string_2_solver
 
 
 
@@ -137,7 +137,7 @@ class Parametric_NODE():
         rhs = self.closure_rhs(parameters)
         y = self.solver(rhs, t_list, y0, history=history)
         
-        return y
+        return y.reshape(-1, y0.shape[-1])  # Ensure output shape is [bs, d]
     
     def eval_vf(self, parameters: Optional[Dict[str, Any]] = None,
                    t: float = 0.0, y: jnp.ndarray = None) -> jnp.ndarray:
