@@ -7,7 +7,7 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import Array,ArrayLike
 from jax._src import api
-from jax.nn.initializers import xavier_uniform,normal
+from jax.nn.initializers import xavier_uniform,normal,xavier_normal
 
 # initializer = jax.nn.initializers.xavier_uniform()
 
@@ -55,7 +55,7 @@ class MLP(nnx.Module):
         for _ in range(num_layers):
             layers.append(nnx.Linear(in_dim, width_layers, rngs=rngs,
                                      kernel_init = xavier_uniform(),
-                                     bias_init = normal(stddev=1e-3)))
+                                     bias_init = normal(stddev = 1e-3))) #,  bias_init = normal(stddev=1e-3)
             layers.append(activation_fn)
             in_dim = width_layers
 
@@ -65,9 +65,9 @@ class MLP(nnx.Module):
         self.layers = layers
 
     def __call__(self, x: Array) -> Array:
-
+        # x0 = x
         for layer in self.layers:
             x = layer(x)
-        return x
+        return x # Residual connection
 
 
