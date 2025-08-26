@@ -109,7 +109,7 @@ class G_matrix:
         x,info = solver(matvec,b,tol = tol, maxiter = maxiter,x0=x0)
         
         # x,info = minres(matvec, b, tol=tol, maxiter=maxiter,x0 = x0)
-        return x
+        return x,info
 
 
 @partial(jax.jit, static_argnums=(0))  # Static node
