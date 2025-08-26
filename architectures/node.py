@@ -7,12 +7,66 @@ import jax
 import flax.linen as nn
 import jax.numpy as jnp
 import jax.random as jrandom
-from typing import Callable, Dict, Any, Optional, Sequence
+from typing import Callable, Dict, Any, Optional, Sequence,Tuple
+from jaxtyping import PyTree,Array
 from architectures.MMNN import MMNN
 from ODE_solvers.solvers import  string_2_solver
+from flax import nnx
 
+# Neural ODE class
+class NeuralODE(nnx.Module):
+    def __init__(self, 
+                 dynamics_model = nnx.Module,
+                 time_dependent: bool = False,
+                 solver: str = "euler",
+                 dt0=0.1,
+                 rtol=1e-4,
+                 atol=1e-6):
+        self.dynamics = dynamics_model
+        self.solver = string_2_solver(solver)
+        self.dt0 = dt0
+        self.rtol = rtol
+        self.atol = atol
+        self.time_dependent = time_dependent
 
+    # Define the vector field function
+    def vector_field(self,t, y, args):
+        data = y
+        if self.time_dependent:
+            data = jnp.concatenate([t[:,None], y], axis=-1)  # Add time as a feature
+        return self.dynamics(data)
 
+    # @nnx.jit
+    def __call__(self, y0: Array, t_span: Tuple[float,float], params: Optional[PyTree] = None) -> Array:
+        """
+        Solve the ODE from t_span[0] to t_span[1] with initial condition y0
+        
+        Args:
+            y0: Initial condition, shape (batch_size, feature_dim) or (feature_dim,)
+            t_span: Tuple of (t0, t1) for integration bounds
+            
+        Returns:
+            Final state at time t1
+        """
+        
+        if params is None:
+            model = self.dynamics
+        else:
+            graphdef,_ = nnx.split(self.dynamics)
+            model = nnx.merge(graphdef, params)
+        # Use defined model for the vector field
+        def vector_field(t: float, y: Array, args: Optional[dict] = None):
+            data = y
+            if self.time_dependent:
+                data = jnp.concatenate([t[:,None], y], axis=-1)  # Add time as a feature
+            return model(data)
+        
+        t_list = jnp.arange(t_span[0], t_span[1], self.dt0)
+
+        y = self.solver(vector_field,t_list,y0,history=False)
+       
+        
+        return y.reshape(-1,y0.shape[-1])  # Return final state
 
 class Parametric_NODE():
     '''
@@ -166,7 +220,7 @@ class Parametric_NODE():
     
     def fisher_information():
         '''
-        Computes $$\int ||\nabla \rho(x)||^2\rho(x)dx$$.
+        Computes 
         This is a placeholder function and should be implemented in subclasses.
         '''
         raise NotImplementedError("fisher_information method not implemented.")

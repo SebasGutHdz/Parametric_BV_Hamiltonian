@@ -7,9 +7,9 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import Array,ArrayLike
 from jax._src import api
+from jax.nn.initializers import xavier_uniform,normal
 
-
-initializer = jax.nn.initializers.xavier_uniform()
+# initializer = jax.nn.initializers.xavier_uniform()
 
 
 
@@ -53,7 +53,9 @@ class MLP(nnx.Module):
 
         # hidden layers
         for _ in range(num_layers):
-            layers.append(nnx.Linear(in_dim, width_layers, rngs=rngs))
+            layers.append(nnx.Linear(in_dim, width_layers, rngs=rngs,
+                                     kernel_init = xavier_uniform(),
+                                     bias_init = normal(stddev=1e-3)))
             layers.append(activation_fn)
             in_dim = width_layers
 
