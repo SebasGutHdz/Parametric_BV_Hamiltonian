@@ -6,10 +6,12 @@ import jax.numpy as jnp
 
 
 
-def minres(A_func: Callable, b: PyTree, tol: float = 3e-4, x0: Optional[PyTree] = None, maxiter: int = 100) -> PyTree:
+
+def minres(A_func: Callable, b: PyTree, tol: float = 1e-6, x0: Optional[PyTree] = None, maxiter: int = 100) -> tuple[PyTree, dict]:
     """
-    Simplified MINRES for your G matrix system with PyTree support.
+    Corrected MINRES implementation for PyTree support.
     """
+    
     @jax.jit
     def dot_tree(x: PyTree, y: PyTree) -> Array:
         return sum(jax.tree.leaves(jax.tree.map(lambda a, b: jnp.sum(a * b), x, y)))
@@ -19,56 +21,115 @@ def minres(A_func: Callable, b: PyTree, tol: float = 3e-4, x0: Optional[PyTree] 
         return jnp.sqrt(dot_tree(x, x))
 
     @jax.jit
-    def clone_tree(x: PyTree) -> PyTree:
-        return jax.tree.map(lambda a: jnp.array(a), x)
-    @jax.jit
-    def xpay_tree(x: PyTree, y: PyTree, alpha: float) -> PyTree:
-        return jax.tree.map(lambda a, b: a + alpha * b, x, y)
+    def scale_tree(x: PyTree, alpha: float) -> PyTree:
+        return jax.tree.map(lambda a: alpha * a, x)
     
-    # def step():
+    @jax.jit
+    def add_trees(x: PyTree, y: PyTree) -> PyTree:
+        return jax.tree.map(lambda a, b: a + b, x, y)
+    
+    @jax.jit
+    def sub_trees(x: PyTree, y: PyTree) -> PyTree:
+        return jax.tree.map(lambda a, b: a - b, x, y)
 
+    # Initialize
     if x0 is None:
         x = jax.tree.map(jnp.zeros_like, b)
     else:
-        x = clone_tree(x0)
+        x = jax.tree.map(lambda a: jnp.array(a), x0)
 
+    # Initial residual
     Ax = A_func(x)
-    r = xpay_tree(b, Ax, -1.0)
-    p0 = clone_tree(r)
-    s0 = A_func(p0)
-    p1 = clone_tree(p0)
-    s1 = clone_tree(s0)
-
+    r = sub_trees(b, Ax)
+    
+    # MINRES initialization
+    v_old = jax.tree.map(jnp.zeros_like, b)
+    v = jax.tree.map(lambda a: jnp.array(a), r)
+    w_old = jax.tree.map(jnp.zeros_like, b)
+    w = jax.tree.map(jnp.zeros_like, b)
+    
+    beta = norm_tree(r)
+    initial_residual = beta
+    
+    if beta < tol:
+        info = {"success": True, "iterations": 0, "norm_res": beta}
+        return x, info
+    
+    # Normalize v
+    v = scale_tree(v, 1.0 / beta)
+    
+    eta = beta
+    s_old = 0.0
+    c_old = 1.0
+    
     for i in range(maxiter):
+        # Lanczos process
+        Av = A_func(v)
         
-        p2 = clone_tree(p1)
-        p1 = clone_tree(p0)
-        s2 = clone_tree(s1)
-        s1 = clone_tree(s0)
-
-        alpha = dot_tree(r, s1) / dot_tree(s1, s1)
-
-        x = xpay_tree(x, p1, alpha)
-        r = xpay_tree(r, s1, -alpha)
-
-        if norm_tree(r) < tol**2:
-            print(f"Converged in {i} iterations")
-            info = {"success": True, "iterations": i, "norm_res": norm_tree(r)}
+        if i > 0:
+            Av = sub_trees(Av, scale_tree(v_old, beta))
+        
+        alpha = dot_tree(v, Av)
+        Av = sub_trees(Av, scale_tree(v, alpha))
+        
+        beta = norm_tree(Av)
+        
+        # Apply previous Givens rotation
+        if i > 0:
+            delta = c_old * alpha + s_old * beta
+            gamma_bar = s_old * alpha - c_old * beta
+        else:
+            delta = alpha
+            gamma_bar = beta
+        
+        # Compute new Givens rotation
+        if abs(gamma_bar) < 1e-14:  # Avoid division by zero
+            c = 1.0
+            s = 0.0
+            gamma = delta
+        else:
+            if abs(gamma_bar) > abs(delta):
+                tau = delta / gamma_bar
+                s = 1.0 / jnp.sqrt(1.0 + tau**2)
+                c = s * tau
+            else:
+                tau = gamma_bar / delta
+                c = 1.0 / jnp.sqrt(1.0 + tau**2)
+                s = c * tau
+            gamma = c * delta + s * gamma_bar
+        
+        # Update solution
+        if abs(gamma) > 1e-14:  # Avoid division by zero
+            eta_new = -s * eta
+            eta = c * eta
+            
+            w_new = sub_trees(sub_trees(v, scale_tree(w_old, gamma_bar)), scale_tree(w, delta))
+            w_new = scale_tree(w_new, 1.0 / gamma)
+            
+            x = add_trees(x, scale_tree(w_new, eta))
+            
+            # Update for next iteration
+            w_old = jax.tree.map(lambda a: jnp.array(a), w)
+            w = jax.tree.map(lambda a: jnp.array(a), w_new)
+            eta = eta_new
+        
+        # Check convergence
+        residual_norm = abs(eta)
+        
+        if residual_norm < tol:
+            info = {"success": True, "iterations": i + 1, "norm_res": residual_norm}
+            return x, info
+        
+        # Prepare for next iteration
+        if beta > 1e-14 and i < maxiter - 1:
+            v_old = jax.tree.map(lambda a: jnp.array(a), v)
+            v = scale_tree(Av, 1.0 / beta)
+            c_old = c
+            s_old = s
+        else:
             break
-
-        p0 = clone_tree(s1)
-        s0 = A_func(s1)
-        beta1 = dot_tree(s0, s1) / dot_tree(s1, s1)
-        p0 = xpay_tree(p0, p1, -beta1)
-        s0 = xpay_tree(s0, s1, -beta1)
-
-        if i > 1:
-            beta2 = dot_tree(s0,s2)/dot_tree(s2,s2)
-            p0 = xpay_tree(p0, p2, -beta2)
-            s0 = xpay_tree(s0, s2, -beta2)
-    if i == maxiter - 1:
-        info = {"success": False, "iterations": maxiter, "norm_res": norm_tree(r)}
-    print(info)
+    
+    # Did not converge
+    info = {"success": False, "iterations": maxiter, "norm_res": residual_norm}
     return x, info
 
-    
