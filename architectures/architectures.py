@@ -65,9 +65,12 @@ class MLP(nnx.Module):
         self.layers = layers
 
     def __call__(self, x: Array) -> Array:
-        # x0 = x
         for layer in self.layers:
             x = layer(x)
-        return x # Residual connection
+        return x 
+    
+
+
+
 
 
