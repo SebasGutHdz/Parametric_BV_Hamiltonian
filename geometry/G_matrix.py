@@ -10,11 +10,9 @@ from jax import jit, vmap,grad, flatten_util
 from typing import Dict, Any,Optional
 from jaxtyping import PyTree,Array
 from functools import partial
-from jax.scipy.sparse.linalg import cg,gmres
+from jax.scipy.sparse.linalg import gmres
 from flax import nnx
-
-from architectures.node import Parametric_NODE
-from geometry.lin_alg_solvers import minres
+from geometry.lin_alg_solvers import minres,reg_cg
 
 class G_matrix:
     '''
@@ -76,7 +74,7 @@ class G_matrix:
         return jax.tree.map(lambda x: jnp.mean(x, axis=0), contributions)
     
     # @partial(jit,static_argnums = (0,6))
-    def solve_system(self,z_samples: Array, b: PyTree, params: Optional[PyTree] = None, tol: float = 1e-5, maxiter: int = 10, method: str = "cg", x0: Optional[PyTree] = None) -> PyTree:
+    def solve_system(self,z_samples: Array, b: PyTree, params: Optional[PyTree] = None, tol: float = 1e-5, maxiter: int = 10, method: str = "cg",regularization: float = 1e-6, x0: Optional[PyTree] = None) -> PyTree:
 
         '''
         Solve G(theta) x = b using conjugate gradient method
@@ -88,6 +86,7 @@ class G_matrix:
             tol: Tolerance for CG solver
             maxiter: Maximum number of iterations for CG solver
             method: Method to use for solving the linear system ("cg" or "gmres")
+            regularization: Regularization parameter for the CG solver
             x0: Initial guess for the solution
 
         Returns:
@@ -96,7 +95,7 @@ class G_matrix:
         if method not in ["cg","gmres","minres"]:
             raise ValueError(f"Unknown method: {method}")
         if method == "cg":
-            solver = cg
+            solver = lambda matvec,b,tol,maxiter,x0: reg_cg(matvec,b,epsilon=regularization,tol=tol,maxiter=maxiter,x0 = x0)
         elif method == "gmres":
             solver = gmres
         elif method == "minres":

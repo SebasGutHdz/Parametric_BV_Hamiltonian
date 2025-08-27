@@ -1,10 +1,23 @@
+import os
+import sys
+# Add the parent directory to the system path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
 from typing import Callable,Optional
 from jaxtyping import PyTree,Array
 import jax
 import jax.numpy as jnp 
+from jax.scipy.sparse.linalg import cg
 
 
+def reg_cg(A_func: Callable, b: PyTree,epsilon: float =  1e-6, tol: float = 1e-6, x0: Optional[PyTree] = None, maxiter: int = 100) -> tuple[PyTree, dict]:
 
+    def regu_A(x: PyTree) -> PyTree:
+        return jax.tree.map(lambda x,y: x+epsilon*y, A_func(x), x)
+
+
+    return cg(regu_A, b, x0=x0, tol=tol, maxiter=maxiter)
 
 
 def minres(A_func: Callable, b: PyTree, tol: float = 1e-6, x0: Optional[PyTree] = None, maxiter: int = 100) -> tuple[PyTree, dict]:
