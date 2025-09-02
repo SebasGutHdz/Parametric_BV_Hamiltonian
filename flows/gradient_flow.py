@@ -16,12 +16,11 @@ from functionals.linear_funcitonal_class import LinearPotential
 
 
 
-
-
+# Can this function be jitted? 
 def gradient_flow_step(node: nnx.Module, z_samples: Array, G_mat: G_matrix,
                                     potential: LinearPotential, step_size: float = 0.01,
                                     solver: str = "minres", solver_tol: float = 1e-6,
-                                    solver_maxiter: int = 50,regularization: float = 1e-6) -> Tuple[nnx.Module, dict]:
+                                    solver_maxiter: int = 10,regularization: float = 1e-6) -> Tuple[nnx.Module, dict]:
     """
     Generic gradient flow step that works with any LinearPotential
     
@@ -30,11 +29,10 @@ def gradient_flow_step(node: nnx.Module, z_samples: Array, G_mat: G_matrix,
         z_samples: Reference samples for Monte Carlo estimation
         G_mat: G-matrix object for linear system solving
         potential: LinearPotential instance
-        step_size: Gradient flow step size h
+        step_size: Gradient flow step size h TODO: Implement higher order solvers or adaptive step sizing
         solver_tol: Tolerance for linear solver
         solver_maxiter: Maximum iterations for linear solver
-        use_regularization: Whether to use regularized CG solver
-        
+        regularization: Regularization parameter used in regularized cg
     Returns:
         updated_node: Node with updated parameters
         step_info: Dictionary with step diagnostics
@@ -44,9 +42,9 @@ def gradient_flow_step(node: nnx.Module, z_samples: Array, G_mat: G_matrix,
     _, current_params = nnx.split(node)
     
     # Compute energy gradient using the potential
-    energy_grad = potential.compute_energy_gradient(node, z_samples, current_params)
+    energy_grad,energy = potential.compute_energy_gradient(node, z_samples, current_params)
     
-    # Solve linear system: G(θ) η = -∇_θ F(θ)
+    # Solve linear system
     neg_energy_grad = jax.tree.map(lambda x: -x, energy_grad)
     
     
@@ -56,7 +54,8 @@ def gradient_flow_step(node: nnx.Module, z_samples: Array, G_mat: G_matrix,
                                             maxiter=solver_maxiter,
                                             method=solver,
                                             regularization=regularization)
-    # Update parameters: θ^{k+1} = θ^k + h * η
+    # ODE solve. 
+    # TODO: Higher order derivative solvers. 
     updated_params = jax.tree.map(lambda p, e: p + step_size * e, current_params, eta)
     
     # Create updated node
@@ -72,6 +71,7 @@ def gradient_flow_step(node: nnx.Module, z_samples: Array, G_mat: G_matrix,
         'gradient_norm': grad_norm,
         'eta_norm': eta_norm,
         'param_norm': param_norm,
+        'energy': energy,
         'step_size': step_size
     }
     
@@ -119,13 +119,13 @@ def run_gradient_flow(node: nnx.Module, z_samples: Array, G_mat: G_matrix,
     sample_history = []  # Store samples at key iterations for visualization
     
     # Initial state
-    _, current_params = nnx.split(node)
-    current_energy, current_samples = potential.evaluate_energy(node, z_samples, current_params)
-    energy_history.append(float(current_energy))
-    sample_history.append(current_samples)
+    # _, current_params = nnx.split(node)
+    # current_energy, current_samples = potential.evaluate_energy(node, z_samples, current_params)
+    # energy_history.append(float(current_energy))
+    # sample_history.append(current_samples)
     
-    print(f"Initial energy: {current_energy:.6f}")
-    print(f"Target: minimize energy functional")
+    # print(f"Initial energy: {current_energy:.6f}")
+    # print(f"Target: minimize energy functional")
     
     # Main integration loop
     current_node = node
@@ -144,13 +144,17 @@ def run_gradient_flow(node: nnx.Module, z_samples: Array, G_mat: G_matrix,
         solver_tol=tolerance,
         regularization=regularization
     )
-    
+    # Energy from previous step
+    init_energy = step_info['energy']
+    energy_history.append(float(init_energy))
+    print(f"Initial energy: {init_energy:.6f}")
+
     # Evaluate new energy
     _, current_params = nnx.split(current_node)
-    current_energy, samples0 = potential.evaluate_energy(current_node, z_samples, current_params)
+    _, samples0 = potential.evaluate_energy(current_node, z_samples, current_params)
     
     # Store diagnostics
-    energy_history.append(float(current_energy))
+    # energy_history.append(float(current_energy))
     solver_stats.append(step_info)
     param_norm = jnp.sqrt(sum(jax.tree.leaves(jax.tree.map(lambda x: jnp.sum(x**2), current_params))))
     param_norms.append(float(param_norm))
@@ -158,7 +162,7 @@ def run_gradient_flow(node: nnx.Module, z_samples: Array, G_mat: G_matrix,
     # Store samples for visualization at regular intervals
     sample_history.append(samples0)
     
-    for iteration in range(max_iterations):
+    for iteration in range(max_iterations-1):
         
         key,subkey= jax.random.split(key)
         z_samples_eval = jax.random.normal(subkey,(n_samples,2))
@@ -174,27 +178,24 @@ def run_gradient_flow(node: nnx.Module, z_samples: Array, G_mat: G_matrix,
         
         # Evaluate new energy
         _, current_params = nnx.split(current_node)
-        current_energy, samples1 = potential.evaluate_energy(current_node, z_samples, current_params)
+        # current_energy, samples1 = potential.evaluate_energy(current_node, z_samples, current_params)
         
         # Store diagnostics
-        energy_history.append(float(current_energy))
+        energy_history.append(float(step_info['energy']))
         solver_stats.append(step_info)
         param_norm = jnp.sqrt(sum(jax.tree.leaves(jax.tree.map(lambda x: jnp.sum(x**2), current_params))))
-        param_norms.append(float(param_norm))
-        
-        # Store samples for visualization at regular intervals
-        sample_history.append(samples1)
+        param_norms.append(float(param_norm))      
         
         # Progress reporting
-        if iteration % progress_every == 0 :
-            energy_decrease = energy_history[0] - current_energy
-            print(f"Iter {iteration:3d}: Energy = {current_energy:.6f}, "
-                  f"Decrease = {energy_decrease:.6f}, "
+        if iteration % progress_every == 0 or iteration == max_iterations - 2:
+            current_energy, samples1 = potential.evaluate_energy(current_node, z_samples, current_params)
+            sample_history.append(samples1)
+            print(f"Iter {iteration:3d}: Energy = {step_info['energy']:.6f}, "
                   f"Grad norm: {step_info['gradient_norm']:.2e}")
             fig,ax = plt.subplots()
             ax = potential.plot_function(fig = fig, ax=ax)
-            ax.scatter(samples0[:,0],samples0[:,1],color = 'blue',s=5,alpha = 0.1,label = f'Iteration {iteration-1}')
-            ax.scatter(samples1[:,0],samples1[:,1],color = 'red',s=5,alpha = 0.1,label = f'Iteration {iteration}')
+            ax.scatter(samples0[:,0],samples0[:,1],color = 'green',s=5,alpha = 0.6,label = f'Iteration {iteration-progress_every}')
+            ax.scatter(samples1[:,0],samples1[:,1],color = 'red',s=5,alpha = 0.8,label = f'Iteration {iteration}')
             ax.set_title(f"Iteration {iteration}: Energy = {current_energy:.6f}")
             plt.legend()
             plt.show()

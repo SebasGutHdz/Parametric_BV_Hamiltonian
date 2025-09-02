@@ -9,6 +9,7 @@ from typing import  Optional,Tuple
 from jaxtyping import PyTree,Array
 from ODE_solvers.solvers import  string_2_solver
 from flax import nnx
+import jax
 
 # Neural ODE class
 class NeuralODE(nnx.Module):
@@ -41,7 +42,7 @@ class NeuralODE(nnx.Module):
         return
 
     # @nnx.jit
-    def __call__(self, y0: Array, t_span: Tuple[float,float], params: Optional[PyTree] = None) -> Array:
+    def __call__(self, y0: Array, t_span: Optional[Tuple[float,float]] = (0.0,1.0), params: Optional[PyTree] = None) -> Array:
         """
         Solve the ODE from t_span[0] to t_span[1] with initial condition y0
         
@@ -62,6 +63,7 @@ class NeuralODE(nnx.Module):
         def vector_field(t: float, y: Array, args: Optional[dict] = None):
             data = y
             if self.time_dependent:
+                t = t*jnp.ones((y.shape[0],))  # Broadcast time to match batch size
                 data = jnp.concatenate([t[:,None], y], axis=-1)  # Add time as a feature
             return model(data)
         

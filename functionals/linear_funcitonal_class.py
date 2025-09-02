@@ -31,10 +31,10 @@ class LinearPotential(nnx.Module):
         self.potential_kwargs = potential_kwargs
 
         if x_bds is None:
-            x_bds = jnp.array([-5, 5])
+            x_bds = jnp.array([-3, 3])
 
         if y_bds is None:
-            y_bds = jnp.array([-5, 5])
+            y_bds = jnp.array([-3, 3])
 
         self.x_bds = x_bds
         self.y_bds = y_bds
@@ -53,26 +53,28 @@ class LinearPotential(nnx.Module):
     def compute_energy_gradient(self, node: nnx.Module, z_samples: Array, 
                                params: Optional[PyTree] = None) -> PyTree:
         """
-        Compute gradient of energy functional F(ρ) = ∫ U(x)ρ(x)dx
+        Compute gradient of energy functional 
         
         Args:
             node: Neural ODE model
             z_samples: Reference samples (batch_size, d)
             params: Parameters to evaluate gradient at (if None, uses current node params)
         Returns:
-            Gradient ∇_θ F(θ)
+            Gradient 
         """
         if params is None:
             _, params = nnx.split(node)
         
         def energy_functional(p: PyTree) -> Array:
             # Transform reference samples through flow
-            x_samples = node(z_samples, (0.0, 1.0), params=p)
+            x_samples = node(z_samples, params=p)
             # Evaluate potential and average (Monte Carlo estimate)
             potential_values = self.potential_fn(x_samples, **self.potential_kwargs)
             return jnp.mean(potential_values)
-        
-        return jax.grad(energy_functional)(params)
+
+        values,grad = jax.value_and_grad(energy_functional)(params)
+
+        return grad,values
     
     def evaluate_energy(self, node: nnx.Module, z_samples: Array,
                        params: Optional[PyTree] = None) -> tuple[Array, Array]:
@@ -89,7 +91,7 @@ class LinearPotential(nnx.Module):
         if params is None:
             _, params = nnx.split(node)
 
-        x_samples = node(z_samples, (0.0, 1.0), params=params)
+        x_samples = node(z_samples, params=params)
         potential_values = self.potential_fn(x_samples, **self.potential_kwargs)
         return jnp.mean(potential_values), x_samples
 
@@ -109,7 +111,7 @@ class LinearPotential(nnx.Module):
         Z = self.potential_fn(jnp.stack([X.ravel(), Y.ravel()], axis=-1), **self.potential_kwargs)
         Z = Z.reshape(X.shape)
 
-        contour = ax.contour(X, Y, Z, levels=500, cmap='viridis', alpha=0.8)
+        contour = ax.contourf(X, Y, Z, levels=100, cmap='cividis', alpha=0.5)
         fig.colorbar(contour)
         ax.set_xlabel('x')
         ax.set_ylabel('y')

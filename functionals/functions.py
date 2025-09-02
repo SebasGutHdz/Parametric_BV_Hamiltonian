@@ -30,12 +30,28 @@ def double_well_potential_fn(x: Array, alpha: float = 1.0) -> Array:
     x_coord = x[:, 0]  # x-coordinates
     y_coord = x[:, 1]  # y-coordinates
 
-    # Double-well in y: (y² - 1)²
+    # Double-well in y: (y² - 2)²
     y_term = (y_coord**2 - 2.0)**2
 
     # Harmonic confinement in x: αx²
     x_term = alpha * x_coord**2
     
+    return y_term + x_term
+
+@jax.jit  
+def four_well_potential_fn(x: Array, alpha: float = 1.0) -> Array:
+    """
+    Four-well potential U(x,y) = (y² - 2)² + α*(x²-2)²
+    """
+    x_coord = x[:, 0]  # x-coordinates
+    y_coord = x[:, 1]  # y-coordinates
+
+    # Four-well in y: (y² - 2)²
+    y_term = alpha*(y_coord**2 - 2.0)**2
+
+    # Harmonic confinement in x: α*(x² - 2)²
+    x_term = alpha * (x_coord**2 - 2.0)**2
+
     return y_term + x_term
 
 @jax.jit
@@ -59,7 +75,12 @@ def create_potentials():
     
     # Strong double-well potential (narrower wells)
     strong_double_well = LinearPotential(double_well_potential_fn, alpha=5.0)
-    
+
+    # Four-well potential
+    four_well_potential = LinearPotential(four_well_potential_fn, alpha=1.0)
+
+    # Strong four-well potential
+    strong_four_well = LinearPotential(four_well_potential_fn, alpha=5.0)
     # Quartic potential (softer confinement)
     quartic_potential = LinearPotential(quartic_potential_fn, strength=0.1)
     
@@ -67,6 +88,8 @@ def create_potentials():
         'quadratic': quadratic_potential,
         'double_well': double_well_potential, 
         'strong_double_well': strong_double_well,
+        'four_well': four_well_potential,
+        'strong_four_well': strong_four_well,
         'quartic': quartic_potential
     }
 
