@@ -19,16 +19,16 @@ class G_matrix:
     Computation of G matrix
     '''
 
-    def __init__(self, node: nnx.Module ):
+    def __init__(self, mapping: nnx.Module ):
         
         '''
         Initialize G matrix computation 
 
         Args:
-            node: Neural ODE model nnx.Module instance     
+            mapping: Neural ODE model nnx.Module instance     
         '''
 
-        self.node = node
+        self.mapping = mapping
         
 
     @partial(jit,static_argnums = (0,))
@@ -37,7 +37,7 @@ class G_matrix:
         Computation of G eta
         Args:
             z_samples: (Bs,d) Samples from reference density
-            eta: PyTree with same GraphDef as node
+            eta: PyTree with same GraphDef as mapping
             parms: PyTree where the G matrix is computed at
         Return:
             G(theta) eta : PyTree
@@ -45,7 +45,7 @@ class G_matrix:
 
         if params is None:
             
-            _,params = nnx.split(self.node)
+            _,params = nnx.split(self.mapping)
         
         def single_sample_contribution(z: Array)-> PyTree:
 
@@ -53,7 +53,7 @@ class G_matrix:
 
             def flow_map(p):
 
-                return self.node(z.reshape(1,-1), (0.0, 1.0), params=p)
+                return self.mapping(z.reshape(1,-1), params=p)
 
             # Step 1: Compute \partial_{theta}T @ eta using Jvp
 
@@ -81,7 +81,7 @@ class G_matrix:
 
         Args:
             z_samples: (Bs,d) Samples from reference density
-            b: PyTree with same GraphDef as node
+            b: PyTree with same GraphDef as mapping
             parms: PyTree where the G matrix is computed at
             tol: Tolerance for CG solver
             maxiter: Maximum number of iterations for CG solver
@@ -101,7 +101,7 @@ class G_matrix:
         elif method == "minres":
             solver = minres
         if params is None:
-            _,params = nnx.split(self.node)
+            _,params = nnx.split(self.mapping)
         # Define the linear operator for G(theta)
         matvec = lambda eta: self.mvp(z_samples, eta, params)
         # Use Jax inbuilts methods cg or gmres. 

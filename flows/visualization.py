@@ -25,7 +25,7 @@ def visualize_gradient_flow_results(results: dict, figsize: tuple = (15, 10)):
     axes[0,0].set_ylabel('Energy')
     axes[0,0].set_title('Energy Decay')
     axes[0,0].grid(True)
-    axes[0,0].set_yscale('log')
+    # axes[0,0].set_yscale('log')
     
     # Parameter norm evolution
     axes[0,1].plot(results['param_norms'])

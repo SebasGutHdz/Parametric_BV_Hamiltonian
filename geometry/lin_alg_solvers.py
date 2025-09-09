@@ -4,11 +4,12 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-from typing import Callable,Optional
+from typing import Callable,Optional,Any
 from jaxtyping import PyTree,Array
 import jax
 import jax.numpy as jnp 
 from jax.scipy.sparse.linalg import cg
+from jax import lax
 
 
 def reg_cg(A_func: Callable, b: PyTree,epsilon: float =  1e-6, tol: float = 1e-6, x0: Optional[PyTree] = None, maxiter: int = 100) -> tuple[PyTree, dict]:
@@ -22,7 +23,7 @@ def reg_cg(A_func: Callable, b: PyTree,epsilon: float =  1e-6, tol: float = 1e-6
 
 def minres(A_func: Callable, b: PyTree, tol: float = 1e-6, x0: Optional[PyTree] = None, maxiter: int = 100) -> tuple[PyTree, dict]:
     """
-    Corrected MINRES implementation for PyTree support.
+    MINRES implementation for PyTree support.
     """
     
     @jax.jit
