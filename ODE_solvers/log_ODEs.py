@@ -14,6 +14,7 @@ def divergence_vf(
         vf_model: nnx.Module,
         t: TimeArray,
         x: SampleArray,
+        time_dependent: bool = False
 )-> Array:
     '''
     Compute the divergence of the vector field with respect to x using ODE flow
@@ -24,9 +25,9 @@ def divergence_vf(
     Returns:
         div: Divergence of the vector field at (t,x), shape (batch_size,)
     '''
-
+    
     def velocity_field(t,x):
-        return eval_model(vf_model, t, x)
+        return eval_model(vf_model, t, x,time_dependent=time_dependent)
     
     # Compute the divergence using jax.jacfwd
     def compute_divergence(t_single, x_single):
@@ -40,6 +41,7 @@ def divergence_vf_hutch(
     vf_model: nnx.Module,
     t: TimeArray,
     x: SampleArray,
+    time_dependent: bool = False, 
     num_samples: int = 1000
 ) -> Array:
     '''
@@ -60,7 +62,7 @@ def divergence_vf_hutch(
         '''
         # Define velocity field with fixed time parameter
         def velocity_field_fixed_t(x: Array) -> Array:
-            return eval_model(vf_model, t_single, x)
+            return eval_model(vf_model, t_single, x, time_dependent=time_dependent)
 
         def jvp_fn(x_single: Array, v: Array) -> Array:
             '''Compute JVP of velocity field w.r.t. x at x_single in direction v'''
@@ -93,6 +95,7 @@ def jacobian_vf(
         vf_model: nnx.Module,
         t: TimeArray,
         x: SampleArray,
+        time_dependent: bool = False
 )-> Array:
     '''
     Compute the Jacobian of the vector field with respect to x using ODE flow
@@ -105,7 +108,7 @@ def jacobian_vf(
     '''
 
     def velocity_field(t,x):
-        return eval_model(vf_model, t, x)
+        return eval_model(vf_model, t, x,time_dependent=time_dependent)
     
     # Compute the Jacobian using jax.jacfwd, returns function. Evaluate at single point
     def compute_jacobian(t_single, x_single):
@@ -117,12 +120,13 @@ def jacobian_vf(
 
 def compute_jacobian_and_grad_div(
     vf_model: nnx.Module,
-    t,
-    x):
+    t: TimeArray,
+    x: SampleArray,
+    time_dependent: bool = False):
     """Compute both jacobian and gradient of divergence in single pass"""
     
     def forward_fn(x_pos):
-        jac_batch = jacobian_vf(vf_model, t, x_pos)
+        jac_batch = jacobian_vf(vf_model, t, x_pos,time_dependent= time_dependent)  # (batch_size, dim, dim)
         div_sum = jnp.sum(jnp.trace(jac_batch, axis1=1, axis2=2))
         return div_sum, jac_batch  # (value, auxiliary)
     

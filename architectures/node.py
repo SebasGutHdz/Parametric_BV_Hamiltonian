@@ -10,6 +10,7 @@ from jaxtyping import PyTree,Array
 from ODE_solvers.solvers import  string_2_solver
 from flax import nnx
 import jax
+import jax.scipy.stats as stats
 
 from core.types import SampleArray,TimeArray,VelocityArray,TrajectoryArray
 from architectures.utils_node import eval_model
@@ -42,7 +43,7 @@ class NeuralODE(nnx.Module):
             return eval_model(self.dynamics,t,y)
         return self.dynamics(data)
 
-    def log_likelihood(self,t: TimeArray,xt: TrajectoryArray,log_prob_init: Array,method: str = 'exact',params: Optional[PyTree] = None,log_trajectory: bool = False) -> Array:
+    def log_likelihood(self,t: TimeArray,xt: TrajectoryArray,log_prob_init: Optional[Array] = None,method: str = 'exact',params: Optional[PyTree] = None,log_trajectory: bool = False) -> Array:
         '''
         Solve ODE for loglikelihood of ODE 
         Args:
@@ -56,6 +57,8 @@ class NeuralODE(nnx.Module):
             log_likelihood: Loglikelihood of the ODE at (t,x), shape (batch_size,)
         '''
         # To call the solver.step method, we need function, t_list, step_index, solution_history
+        if log_prob_init is None:
+            log_prob_init = stats.multivariate_normal.logpdf(xt[:,0,:], mean=jnp.zeros(xt.shape[-1]), cov=jnp.eye(xt.shape[-1]))
         solution_history = [log_prob_init]
         for i in range(len(t) - 1):
             # Expand t to match batch size
@@ -68,7 +71,7 @@ class NeuralODE(nnx.Module):
             return jnp.array(solution_history)
         else:
             return solution_history[-1]
-    def score_function(self,t: TimeArray,xt: TrajectoryArray,score_init: SampleArray,method: str = 'exact',params: Optional[PyTree] = None,score_trajectory: bool = False):
+    def score_function(self,t: TimeArray,xt: TrajectoryArray,score_init: Optional[Array] = None,method: str = 'exact',params: Optional[PyTree] = None,score_trajectory: bool = False):
         '''
         Solve ODE for score function of ODE
         Args:
@@ -82,23 +85,28 @@ class NeuralODE(nnx.Module):
             score: Score function of the ODE at (t,x), shape (batch_size, dim)
         '''
         # To call the solver.step method, we need function, t_list, step_index, solution_history
-        solution_history = [score_init]
-        for i in range(len(t) - 1):
-            # Expand t to match batch size
-            t_reshape = t[i]*jnp.ones(xt[:,i,:].shape[0])  # Shape (batch_size,)
-            # Negative jacobian of the vector field (bs,dim,dim)
-            jacobian,grad_div = self.jacobian_grad_and_div(t = t_reshape, x=xt[:,i,:],method = method, params=params)
-            score_rhs = lambda time,score: -jnp.einsum('bij,bj->bi', jacobian, score) - grad_div
-            score_new = self.solver.step(score_rhs,t,i,solution_history)
-            solution_history.append(score_new)
-        if score_trajectory:
-            return jnp.array(solution_history)
-        else:
-            return solution_history[-1]
+        if method not in ['exact','autodiff']:
+            raise ValueError(f'Method {method} not recognized. Available methods: exact, autodiff.')
+        if score_init is None:
+            score_init = - xt[:,0,:]  # Score of standard normal
+        if method == "exact":
+            solution_history = [score_init]
+            for i in range(len(t) - 1):
+                # Expand t to match batch size
+                t_reshape = t[i]*jnp.ones(xt[:,i,:].shape[0])  # Shape (batch_size,)
+                # Negative jacobian of the vector field (bs,dim,dim)
+                jacobian,grad_div = self.jacobian_grad_and_div(t = t_reshape, x=xt[:,i,:],method = method, params=params)
+                score_rhs = lambda time,score: -jnp.einsum('bij,bj->bi', jacobian, score) - grad_div
+                score_new = self.solver.step(score_rhs,t,i,solution_history)
+                solution_history.append(score_new)
+            if score_trajectory:
+                return jnp.array(solution_history)
+            else:
+                return solution_history[-1]
         
 
     # @nnx.jit
-    def __call__(self, y0: Array, t_span: Optional[Tuple[float,float]] = (0.0,1.0), params: Optional[PyTree] = None) -> Array:
+    def __call__(self, y0: Array, t_span: Optional[Tuple[float,float]] = (0.0,1.0), params: Optional[PyTree] = None, history: bool = False) -> Array:
         """
         Solve the ODE from t_span[0] to t_span[1] with initial condition y0
         
@@ -117,16 +125,16 @@ class NeuralODE(nnx.Module):
             model = nnx.merge(graphdef, params)
         # Use defined model for the vector field
         def vector_field(t: float, y: Array, args: Optional[dict] = None):
-            data = y
-            if self.time_dependent:
-                return eval_model(model,t,y)
-            return model(data)
+            
+            
+            return eval_model(model,t,y,time_dependent=self.time_dependent)
+            
         
         t_list = jnp.arange(t_span[0], t_span[1], self.dt0)
 
-        y = self.solver(vector_field,t_list,y0,history=False)
-       
-        
+        y = self.solver(vector_field,t_list,y0,history=history)
+        if history:
+            return y,t_list
         return y.reshape(-1,y0.shape[-1])  # Return final state
     
     def divergence(self,t:TimeArray,x:SampleArray,method: str = "exact",params: Optional[PyTree] = None)-> Array:
@@ -136,15 +144,15 @@ class NeuralODE(nnx.Module):
             graphdef,_ = nnx.split(self.dynamics)
             model = nnx.merge(graphdef, params)
         if method == "exact":
-            return divergence_vf(model,t,x)
+            return divergence_vf(model,t,x,self.time_dependent)
         elif method == "hutchinson":
-            return divergence_vf_hutch(model,t,x)
-        
+            return divergence_vf_hutch(model,t,x,self.time_dependent)
+
     def jacobian_grad_and_div(self,t:TimeArray,x:SampleArray,method: str = "exact",params: Optional[PyTree] = None)-> Array:
         if params is None:
             model = self.dynamics
         else:
             graphdef,_ = nnx.split(self.dynamics)
             model = nnx.merge(graphdef, params)
-        return compute_jacobian_and_grad_div(model,t,x)
+        return compute_jacobian_and_grad_div(model,t,x,self.time_dependent)
 

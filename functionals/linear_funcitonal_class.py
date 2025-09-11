@@ -12,13 +12,13 @@ import matplotlib.pyplot as plt
 
 
 
-class LinearPotential(nnx.Module):
+class LinearPotential:
     """
     A class for handling linear potential energy functionals F(ρ) = ∫ U(x)ρ(x)dx
     where U(x) is a user-defined potential function.
     """
 
-    def __init__(self, potential_fn: Callable[[Array], Array], x_bds: Optional[Array] = None, y_bds: Optional[Array] = None, **potential_kwargs):
+    def __init__(self, potential_fn: Callable[[Array], Array], coeff: Optional[float] = 0.0, x_bds: Optional[Array] = None, y_bds: Optional[Array] = None, **potential_kwargs):
         """
         Initialize LinearPotential with a potential function.
         
@@ -29,6 +29,7 @@ class LinearPotential(nnx.Module):
         """
         self.potential_fn = potential_fn
         self.potential_kwargs = potential_kwargs
+        self.coeff = coeff
 
         if x_bds is None:
             x_bds = jnp.array([-3, 3])
@@ -76,7 +77,7 @@ class LinearPotential(nnx.Module):
 
         return grad,values
     
-    def evaluate_energy(self, node: nnx.Module, z_samples: Array,
+    def evaluate_energy(self, node: nnx.Module, z_samples: Array,x_samples: Optional[Array] = None,
                        params: Optional[PyTree] = None) -> tuple[Array, Array]:
         """
         Evaluate current energy F(ρ_θ)
@@ -84,16 +85,22 @@ class LinearPotential(nnx.Module):
         Args:
             node: Neural ODE model
             z_samples: Reference samples
+            x_samples: Pushforward samples (if None, will compute them)
             params: Parameters (if None, uses current node params)
         Returns:
             (energy_value, transformed_samples)
         """
-        if params is None:
-            _, params = nnx.split(node)
-
-        x_samples = node(z_samples, params=params)
+        return_terminal = False
+        if x_samples is None:
+            return_terminal = True
+            if params is None:
+                _, params = nnx.split(node)
+            x_samples = node(z_samples, params=params)
         potential_values = self.potential_fn(x_samples, **self.potential_kwargs)
-        return jnp.mean(potential_values), x_samples
+        if return_terminal:
+            return jnp.mean(potential_values), x_samples
+        else:
+            return jnp.mean(potential_values), None
 
     def plot_function(self,fig = None, ax=None, x_bds=None, y_bds=None):
         """

@@ -112,7 +112,7 @@ class ODESolver(nnx.Module):
             y_new = self.step(f,t_list,i,solution_history)
             solution_history.append(y_new)
         if history:
-            return jnp.array(solution_history)
+            return jnp.array(solution_history).transpose((1,0,2))  # Shape (batch_size, time_steps, dim)
         else:
             return solution_history[-1]
 

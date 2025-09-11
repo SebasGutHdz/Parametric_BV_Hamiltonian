@@ -62,6 +62,14 @@ def quartic_potential_fn(x: Array, strength: float = 0.1) -> Array:
     r_squared = jnp.sum(x**2, axis=-1)
     return strength * r_squared**2 + 0.5 * r_squared
 
+@jax.jit
+def styblinski_tang_potential_fn(x: Array,d:int=2) -> Array:
+    """
+    Styblinski-Tang potential U(x) = 0.5 * Σ (x_i^4 - 16*x_i^2 + 5*x_i)
+    Global minimum at x_i = -2.903534 for all i
+    """
+    return 0.5 * jnp.sum(x**4 - 16*x**2 + 5*x, axis=-1)
+
 
 # Create different potential instances
 def create_potentials():
@@ -83,13 +91,16 @@ def create_potentials():
     strong_four_well = LinearPotential(four_well_potential_fn, alpha=5.0)
     # Quartic potential (softer confinement)
     quartic_potential = LinearPotential(quartic_potential_fn, strength=0.1)
-    
+    # Styblinski-Tang potential
+    styblinski_tang_potential = LinearPotential(styblinski_tang_potential_fn, d=2)
+
     return {
         'quadratic': quadratic_potential,
         'double_well': double_well_potential, 
         'strong_double_well': strong_double_well,
         'four_well': four_well_potential,
         'strong_four_well': strong_four_well,
-        'quartic': quartic_potential
+        'quartic': quartic_potential,
+        'styblinski_tang': styblinski_tang_potential
     }
 
