@@ -108,10 +108,13 @@ class ODESolver(nnx.Module):
             y: jax array, the solution of the ODE at the time points in t_list if history is True, else the solution at t_list[-1]
         '''
         solution_history = [y0]
+        
         for i in range(len(t_list) - 1):
             y_new = self.step(f,t_list,i,solution_history)
+        
             solution_history.append(y_new)
         if history:
+            
             return jnp.array(solution_history).transpose((1,0,2))  # Shape (batch_size, time_steps, dim)
         else:
             return solution_history[-1]

@@ -103,8 +103,32 @@ class NeuralODE(nnx.Module):
                 return jnp.array(solution_history)
             else:
                 return solution_history[-1]
+        if method == "autodiff":
+            # Techinque: Detach terminal condition from the graph.
+            # define the function "log_push_pull" that takes x, pullsback to z, then pushes the solution of the log ode
+            # from z to x, returns the log likelihood at x and we differentiate this function
+            def log_push_pull(x):       
         
+                if len(x.shape) == 1:
+                    x = x[jnp.newaxis, :]  # Add batch dimension if missing
+                
+        
+                backwards_traj,_ = self.pull_back(x,params=params,history=True) # (bs,dim), (bs,T,dim)
+        
+                
+                # Reverse bacwards  for the forward pass
+                fwd_traj = backwards_traj[:,::-1,:]  # (bs,T,dim)
+                # For now we use the exact likelihood, we can also use hutchinson
+                log_px = self.log_likelihood(t, fwd_traj, log_prob_init=None, method='exact', params=params, log_trajectory=False)  # (bs,)
+                
+                return log_px[0]
+            score = jax.vmap(jax.grad(log_push_pull))(xt[:,-1,:])  # (bs,dim)
+            if score_trajectory:    
+                raise NotImplementedError("Score trajectory not implemented for autodiff method.")
+            else:   
+                return score
 
+            
     # @nnx.jit
     def __call__(self, y0: Array, t_span: Optional[Tuple[float,float]] = (0.0,1.0), params: Optional[PyTree] = None, history: bool = False) -> Array:
         """
@@ -126,13 +150,15 @@ class NeuralODE(nnx.Module):
         # Use defined model for the vector field
         def vector_field(t: float, y: Array, args: Optional[dict] = None):
             
-            
             return eval_model(model,t,y,time_dependent=self.time_dependent)
             
-        
-        t_list = jnp.arange(t_span[0], t_span[1], self.dt0)
+        if t_span[0] < t_span[1]:
+            t_list = jnp.arange(t_span[0], t_span[1]+self.dt0, self.dt0)
+        else:
+            t_list = jnp.arange(t_span[0], t_span[1]-self.dt0, -self.dt0)
 
         y = self.solver(vector_field,t_list,y0,history=history)
+        
         if history:
             return y,t_list
         return y.reshape(-1,y0.shape[-1])  # Return final state
@@ -146,7 +172,7 @@ class NeuralODE(nnx.Module):
         if method == "exact":
             return divergence_vf(model,t,x,self.time_dependent)
         elif method == "hutchinson":
-            return divergence_vf_hutch(model,t,x,self.time_dependent)
+            return divergence_vf_hutch(model,t,x,self.time_dependent,num_samples =100)
 
     def jacobian_grad_and_div(self,t:TimeArray,x:SampleArray,method: str = "exact",params: Optional[PyTree] = None)-> Array:
         if params is None:
@@ -155,4 +181,36 @@ class NeuralODE(nnx.Module):
             graphdef,_ = nnx.split(self.dynamics)
             model = nnx.merge(graphdef, params)
         return compute_jacobian_and_grad_div(model,t,x,self.time_dependent)
+    
+    def push_forward(self,z: SampleArray,params: Optional[PyTree] = None,history: bool = False) -> SampleArray:
+        """
+        Push forward samples z through the Neural ODE to obtain x
+        
+        Args:
+            z: Reference samples, shape (batch_size, feature_dim)
+            params: Parameters for the dynamics model (if None, uses current model params)
+            
+        Returns:
+            x: Transformed samples, shape (batch_size, feature_dim)
+        """
+        if params is None:
+            _, params = nnx.split(self.dynamics)
+        return self.__call__(z, params=params, history=history)
 
+    def pull_back(self,x: SampleArray,params: Optional[PyTree] = None,history: bool = False) -> SampleArray:
+        """
+        Pull back samples x through the Neural ODE to obtain z
+        
+        Args:
+            x: Target samples, shape (batch_size, feature_dim)
+            params: Parameters for the dynamics model (if None, uses current model params)
+            
+        Returns:
+            z: Reference samples, shape (batch_size, feature_dim)
+        """
+        
+        if params is None:
+            _, params = nnx.split(self.dynamics)
+        
+        return self.__call__(x, t_span=(1.0, 0.0), params=params, history=history)
+    

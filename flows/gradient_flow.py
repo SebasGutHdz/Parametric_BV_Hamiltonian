@@ -143,36 +143,7 @@ def run_gradient_flow(node: nnx.Module, z_samples: Array, G_mat: G_matrix,
     key = jax.random.PRNGKey(0)
     n_samples = len(z_samples)
     with jax.default_device(device):
-        # key,subkey= jax.random.split(key)
-        # z_samples_eval = jax.random.normal(subkey,(n_samples,2))
-        # # z_samples_eval = jax.device_put(z_samples_eval,device)
         
-        
-        # current_node, step_info = gradient_flow_step(
-        #     current_node, z_samples_eval, G_mat, potential,device,
-        #     step_size=h, 
-        #     solver_tol=tolerance,
-        #     regularization=regularization
-        # )
-        # # Energy from previous step
-        # init_energy = step_info['energy']
-        # energy_history.append(float(init_energy))
-        # print(f"Initial energy: {init_energy:.6f}")
-
-        # # Evaluate new energy
-        # # Eval energy
-        # _, current_params = nnx.split(current_node)
-        # _, samples0, _, _, _ = potential.evaluate_energy(current_node, z_samples, current_params)
-
-        # # Store diagnostics
-        # # energy_history.append(float(current_energy))
-        # solver_stats.append(step_info)
-        # param_norm = jnp.sqrt(sum(jax.tree.leaves(jax.tree.map(lambda x: jnp.sum(x**2), current_params))))
-        # param_norms.append(float(param_norm))
-        
-        # # Store samples for visualization at regular intervals
-        # sample_history.append(samples0)
-
         p_bar = tqdm(range(max_iterations-1), desc="Gradient Flow Progress")
 
         for iteration in p_bar:
