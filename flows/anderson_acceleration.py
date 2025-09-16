@@ -88,12 +88,14 @@ def anderson_step(
     )
     # Build difference matrices 
     m_k = min(memory_size, hist_len)
+    param_hist_trunc = param_history[-m_k:]
+    residual_hist_trunc = residual_history[-m_k:]
 
     param_diffs = []
     residual_diffs = []
 
-    all_params = param_history + [current_params]
-    all_residuals = residual_history + [current_residual]
+    all_params = param_hist_trunc + [current_params]
+    all_residuals = residual_hist_trunc + [current_residual]
 
     for i in range(m_k):
         delta_parm = jax.tree.map(lambda a,b: a-b,all_params[i+1], all_params[i])
@@ -108,13 +110,16 @@ def anderson_step(
     # Compute new parameter estimate
     mixed_residual = current_residual
     for i,gamma_i in enumerate(gamma):
-        mixed_residual = jax.tree.map(lambda a,b: a + mixing_parameter * gamma_i * b, mixed_residual, residual_diffs[i])
+        mixed_residual = jax.tree.map(lambda a,b: a -gamma_i * b, mixed_residual, residual_diffs[i])
     # Check for the mixing parameter (should be here?)
     delta_theta = jax.tree.map(lambda x: mixing_parameter * x, mixed_residual)
     for i,gamma_i in enumerate(gamma):
         delta_theta = jax.tree.map(lambda step,dx: step -gamma_i * dx, delta_theta, param_diffs[i])
     new_params = jax.tree.map(lambda p, d: p + d, current_params, delta_theta)
-    return
+
+    updated_param_history = param_hist_trunc + [current_params]
+    updated_residual_history = residual_hist_trunc + [current_residual]
+    return new_params, updated_param_history, updated_residual_history 
 
 
 
