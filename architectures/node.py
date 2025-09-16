@@ -119,7 +119,7 @@ class NeuralODE(nnx.Module):
                 # Reverse bacwards  for the forward pass
                 fwd_traj = backwards_traj[:,::-1,:]  # (bs,T,dim)
                 # For now we use the exact likelihood, we can also use hutchinson
-                log_px = self.log_likelihood(t, fwd_traj, log_prob_init=None, method='exact', params=params, log_trajectory=False)  # (bs,)
+                log_px = self.log_likelihood(t, fwd_traj, log_prob_init=None, method='hutchinson', params=params, log_trajectory=False)  # (bs,)
                 
                 return log_px[0]
             score = jax.vmap(jax.grad(log_push_pull))(xt[:,-1,:])  # (bs,dim)
@@ -172,7 +172,7 @@ class NeuralODE(nnx.Module):
         if method == "exact":
             return divergence_vf(model,t,x,self.time_dependent)
         elif method == "hutchinson":
-            return divergence_vf_hutch(model,t,x,self.time_dependent,num_samples =100)
+            return divergence_vf_hutch(model,t,x,self.time_dependent,num_samples =50)
 
     def jacobian_grad_and_div(self,t:TimeArray,x:SampleArray,method: str = "exact",params: Optional[PyTree] = None)-> Array:
         if params is None:

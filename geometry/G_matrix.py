@@ -114,3 +114,28 @@ class G_matrix:
         # x,info = minres(matvec, b, tol=tol, maxiter=maxiter,x0 = x0)
         return x,info
 
+    def inner_product(self,x:PyTree,y:PyTree,z_samples: Array,params: Optional[PyTree] = None)-> float:
+        '''
+        Compute the inner product <x,y>_G = x^T G y
+
+        Args:
+            x: PyTree with same GraphDef as mapping
+            y: PyTree with same GraphDef as mapping
+            z_samples: (Bs,d) Samples from reference density
+            parms: PyTree where the G matrix is computed at
+
+        Returns:
+            inner_product: Scalar value of the inner product
+        '''
+
+        Gy = self.mvp(z_samples,y,params)
+
+        # Compute inner product using tree utilities
+
+        leaves_x, treedef = jax.tree.flatten(x)
+
+        leaves_Gy, _ = jax.tree.flatten(Gy)
+
+        inner_product = sum([jnp.vdot(a, b) for a, b in zip(leaves_x, leaves_Gy)])
+
+        return inner_product
