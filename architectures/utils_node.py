@@ -33,12 +33,9 @@ def eval_model(
             t_expanded = t
         else:
             raise ValueError("t does not have the right shape, valid float of jnp with shapes (bs,) and (bs,1)")
-        # print(f"t_shpae {t.shape}")
-        # print(f"t_expanded shape: {t_expanded.shape}")
-        # print(f"x shape: {x.shape}")
+        
 
         model_input = jnp.concatenate([t_expanded,x], axis=-1)
-    
-    
+        
     v_pred = model(model_input)
     return v_pred
