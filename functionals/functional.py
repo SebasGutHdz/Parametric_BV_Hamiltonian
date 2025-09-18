@@ -69,7 +69,17 @@ class Potential:
                                            params=params)
             energy += internal_energy
         # Interaction potential
-        #TODO
+        if self.interaction is not None:
+            batch_size = z_samples.shape[0]
+            #Obtain samples for interaction energy computation
+            part1_samples = x_samples[:batch_size//2,:]
+            part2_samples = x_samples[batch_size//2:,:]
+            if part1_samples.shape[0] < part2_samples.shape[0]:
+                part2_samples = part2_samples[:part1_samples.shape[0],:]
+            elif part2_samples.shape[0] < part1_samples.shape[0]:
+                part1_samples = part1_samples[:part2_samples.shape[0],:]
+            interaction_energy = self.interaction.evaluate_energy(node,z_samples,x_samples = part1_samples,y_samples=part2_samples)
+            energy += interaction_energy
         
         return energy,x_samples,linear_energy,internal_energy,interaction_energy
 
@@ -110,7 +120,19 @@ class Potential:
                 
                 energy += internal_energy
             # Interaction potential
-            #TODO
+            if self.interaction is not None:
+                batch_size = z_samples.shape[0]
+                #Obtain samples for interaction energy computation
+                part1_samples = x_samples[:batch_size//2,:]
+                part2_samples = x_samples[batch_size//2:,:]
+                if part1_samples.shape[0] < part2_samples.shape[0]:
+                    part2_samples = part2_samples[:part1_samples.shape[0],:]
+                elif part2_samples.shape[0] < part1_samples.shape[0]:
+                    part1_samples = part1_samples[:part2_samples.shape[0],:]
+                interaction_energy = self.interaction.evaluate_energy(node,z_samples,x_samples = part1_samples,y_samples=part2_samples,params=p)
+                
+                energy += interaction_energy
+            
             
             energy_breakdown = {'internal_energy':internal_energy,'linear_energy':linear_energy,'interaction_energy':interaction_energy}
             return energy,energy_breakdown

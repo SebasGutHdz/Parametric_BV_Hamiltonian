@@ -70,6 +70,21 @@ def styblinski_tang_potential_fn(x: Array,d:int=2) -> Array:
     """
     return 0.5 * jnp.sum(x**4 - 16*x**2 + 5*x, axis=-1)
 
+@jax.jit
+def aggregation_potential_fn(x: Array,a: int = 4, b: int =2 ) -> Array:
+    """
+    Aggregation potential U(x) = |x|^a/a + |x|^b/b
+    with a > b > 0
+    """
+    return jnp.sum(jnp.abs(x)**a, axis=-1)/a + jnp.sum(jnp.abs(x)**b, axis=-1)/b
+
+@jax.jit
+def zero_potential_fn(x: Array) -> Array:
+    """
+    Zero potential U(x) = 0
+    """
+    return jnp.zeros(x.shape[0])
+
 
 # Create different potential instances
 def create_potentials():

@@ -22,6 +22,7 @@ class ParametricModel(nnx.Module):
         activation_fn: str = "tanh",
         key: jax.random.PRNGKey = jax.random.key(0),
         ref_density: str = 'gaussian',
+        scale_factor: float = 1e-3,
         **kwargs
     ):
         """
@@ -33,11 +34,13 @@ class ParametricModel(nnx.Module):
             activation_fn: Activation function for neural networks
             key: JAX random key for parameter initialization
             ref_density: Reference density {'gaussian', 'uniform'}
+            scale_factor: Scale factor for initial parameters
             **kwargs: Additional arguments (see _validate_kwargs)
         """
         self.parametric_map = parametric_map
         self.problem_dimension = architecture[0]
         self.ref_density = ref_density
+        self.scale_factor = scale_factor
         
         # Validate inputs
         self._validate_inputs(parametric_map, architecture, ref_density, kwargs)
@@ -108,6 +111,12 @@ class ParametricModel(nnx.Module):
             self.model = MLP(din=din, num_layers=num_layers,
                            width_layers=width_layers, dout=dout,
                            activation_fn=activation_fn, rngs=rngs)
+        # Initialize parameters to be almost zero. 
+        # This guarantees that the initial transport map is close to identity map    
+        graphdef, params = nnx.split(self.model)
+        params = jax.tree.map(lambda p: p * self.scale_factor, params)
+        self.model = nnx.merge(graphdef, params)
+        
 
     def _initialize_node_model(self, din: int, dout: int, num_layers: int,
                              width_layers: int, activation_fn: str,
