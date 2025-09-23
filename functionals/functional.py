@@ -78,8 +78,8 @@ class Potential:
                 part2_samples = part2_samples[:part1_samples.shape[0],:]
             elif part2_samples.shape[0] < part1_samples.shape[0]:
                 part1_samples = part1_samples[:part2_samples.shape[0],:]
-            interaction_energy = self.interaction.evaluate_energy(node,z_samples,x_samples = part1_samples,y_samples=part2_samples)
-            energy += interaction_energy
+            interaction_energy,_ = self.interaction.evaluate_energy(node,z_samples,x_samples = part1_samples,y_samples=part2_samples)
+            energy += interaction_energy*self.interaction.coeff
         
         return energy,x_samples,linear_energy,internal_energy,interaction_energy
 
@@ -129,9 +129,9 @@ class Potential:
                     part2_samples = part2_samples[:part1_samples.shape[0],:]
                 elif part2_samples.shape[0] < part1_samples.shape[0]:
                     part1_samples = part1_samples[:part2_samples.shape[0],:]
-                interaction_energy = self.interaction.evaluate_energy(node,z_samples,x_samples = part1_samples,y_samples=part2_samples,params=p)
+                interaction_energy,_ = self.interaction.evaluate_energy(node,z_samples,x_samples = part1_samples,y_samples=part2_samples,params=p)
                 
-                energy += interaction_energy
+                energy += interaction_energy*self.interaction.coeff
             
             
             energy_breakdown = {'internal_energy':internal_energy,'linear_energy':linear_energy,'interaction_energy':interaction_energy}

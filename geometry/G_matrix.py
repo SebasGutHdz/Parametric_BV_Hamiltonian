@@ -139,3 +139,30 @@ class G_matrix:
         inner_product = sum([jnp.vdot(a, b) for a, b in zip(leaves_x, leaves_Gy)])
 
         return inner_product
+
+
+    def metric_derivative_quadratic_form(self, z_samples: Array , eta: PyTree, params: Optional[PyTree] = None) -> PyTree:
+        '''
+        Compute the gradient of the G matrix in the direction eta. We are returning the PyTree
+
+        [neta^T \partial_{theta_k} G(theta) neta]_{k=1}^{N_params}
+
+        Args:
+            z_samples: (Bs,d) Samples from reference density
+            eta: PyTree with same GraphDef as mapping
+            parms: PyTree where the G matrix is computed at
+
+        Returns:
+            grad_G: PyTree with same GraphDef as mapping
+        '''
+
+        if params is None:
+            _,params = nnx.split(self.mapping)
+
+        # Stop gradients for eta
+        eta = jax.lax.stop_gradient(eta)
+        # Compute the gradient of the inner product <eta, G eta> w.r.t. params
+        grad_fn = lambda p: self.inner_product(eta, eta, z_samples, p)
+        grad_G = jax.grad(grad_fn)(params)
+
+        return grad_G

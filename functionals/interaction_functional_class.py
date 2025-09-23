@@ -119,4 +119,4 @@ class InteractionPotential:
         potential_vals = self(x_samples, y_samples) # (batch_size/2, batch_size/2)
         energy = 0.5 * jnp.mean(potential_vals)
         
-        return energy
+        return energy, x_samples
