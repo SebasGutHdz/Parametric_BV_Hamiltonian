@@ -87,16 +87,17 @@ class NeuralODE(nnx.Module):
         # To call the solver.step method, we need function, t_list, step_index, solution_history
         if method not in ['exact','autodiff']:
             raise ValueError(f'Method {method} not recognized. Available methods: exact, autodiff.')
-        if score_init is None:
-            score_init = - xt[:,0,:]  # Score of standard normal
+        
         if method == "exact":
+            if score_init is None:
+                score_init = - xt[:,0,:]  # Score of standard normal
             solution_history = [score_init]
             for i in range(len(t) - 1):
                 # Expand t to match batch size
                 t_reshape = t[i]*jnp.ones(xt[:,i,:].shape[0])  # Shape (batch_size,)
-                # Negative jacobian of the vector field (bs,dim,dim)
+                # Negative jacobian of the vector field (bs,dim,dim)SD
                 jacobian,grad_div = self.jacobian_grad_and_div(t = t_reshape, x=xt[:,i,:],method = method, params=params)
-                score_rhs = lambda time,score: -jnp.einsum('bij,bj->bi', jacobian, score) - grad_div
+                score_rhs = lambda time,score: -jnp.einsum('bji,bj->bi', jacobian, score) - grad_div
                 score_new = self.solver.step(score_rhs,t,i,solution_history)
                 solution_history.append(score_new)
             if score_trajectory:
@@ -114,15 +115,17 @@ class NeuralODE(nnx.Module):
                 
         
                 backwards_traj,_ = self.pull_back(x,params=params,history=True) # (bs,dim), (bs,T,dim)
-        
                 
                 # Reverse bacwards  for the forward pass
-                fwd_traj = backwards_traj[:,::-1,:]  # (bs,T,dim)
-                # For now we use the exact likelihood, we can also use hutchinson
-                log_px = self.log_likelihood(t, fwd_traj, log_prob_init=None, method='hutchinson', params=params, log_trajectory=False)  # (bs,)
+                fwd_traj = backwards_traj[:,::-1,:]  # (bs,T,dim)x
                 
+                # For now we use the exact likelihood, we can also use hutchinson
+                log_px = self.log_likelihood(t, fwd_traj, log_prob_init=None, method='exact', params=params, log_trajectory=False)  # (bs,)
+
                 return log_px[0]
-            score = jax.vmap(jax.grad(log_push_pull))(xt[:,-1,:])  # (bs,dim)
+
+            # x_ = jax.numpy.copy(xt[:,-1,:])
+            score = jax.vmap(jax.grad(log_push_pull))(xt[:,-1,:].copy())  # (bs,dim) #x_
             if score_trajectory:    
                 raise NotImplementedError("Score trajectory not implemented for autodiff method.")
             else:   

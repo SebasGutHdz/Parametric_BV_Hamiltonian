@@ -58,7 +58,8 @@ def hamiltonian_flow_step(node: nnx.Module, p_n: PyTree, z_samples: Array, G_mat
     # Get architecture and current parameters
     graph_def, theta_n = nnx.split(node)
     # Update theta using symplectic Euler step
-    alpha,xi = fixed_point_solver(z_samples=z_samples,theta_n=theta_n,p_n=p_n,G_mat=G_mat,h=step_size,gamma=gamma,n_iters=n_iters)
+    alpha,xi = fixed_point_solver(z_samples=z_samples,theta_n=theta_n,p_n=p_n,G_mat=G_mat,h=step_size,gamma=gamma,n_iters=n_iters,
+                                  solver=solver,maxiter=solver_maxiter,tol=solver_tol,regularization=regularization)
     # Compute the terms for the update of p:
     grad_g_mat = G_mat.metric_derivative_quadratic_form(z_samples=z_samples, eta=xi, params=alpha)
     # 2. Compute energy gradient using the potential
@@ -80,7 +81,8 @@ def hamiltonian_flow_step(node: nnx.Module, p_n: PyTree, z_samples: Array, G_mat
     return updated_node, p_new, step_info
 
 
-def fixed_point_solver(z_samples: Array, theta_n: PyTree, p_n: PyTree, G_mat: G_matrix, h: float, gamma: float = 1e-2,n_iters: int = 3)-> list[PyTree,PyTree]:
+def fixed_point_solver(z_samples: Array, theta_n: PyTree, p_n: PyTree, G_mat: G_matrix, h: float, gamma: float = 1e-2,n_iters: int = 3,
+                       solver: str = "cg",maxiter: int = 10,tol: float = 1e-5,regularization: float = 1e-6)-> list[PyTree,PyTree]:
     '''
     This function solves the fixed point iteration problem arising from the implicit update of theta in the symplectic Euler scheme
     See 6-9 of Alg 4.1 in the reference paper. 
@@ -92,13 +94,18 @@ def fixed_point_solver(z_samples: Array, theta_n: PyTree, p_n: PyTree, G_mat: G_
         h: Step size of the Hamiltonian flow
         gamma: Step size gradient descent step for the fixed point interation 
         n_iters: Number of fixed point iterations to perform
+        solver: Linear solver to use ("cg","gmres","minres")
+        maxiter: Maximum number of iterations for linear solver
+        tol: Tolerance for linear solver
+        regularization: Regularization parameter used in regularized cg
+
     Returns:
         alpha: PyTree
         xi: PyTree    
     '''
     # Initialize alpha and xi, alpha = theta, G xi = p
     alpha = jax.tree.map(lambda x: x, theta_n)
-    xi,_ = G_mat.solve_system(z_samples=z_samples,b = p_n,params = alpha,maxiter=10,solver="cg",tol=1e-5,regularization=1e-6)
+    xi,_ = G_mat.solve_system(z_samples=z_samples,b = p_n,params = alpha,maxiter=maxiter,method=solver,tol=tol,regularization=regularization)
     # run n_iters of fixed point iteration
     for _ in range(n_iters):
         # update alpha

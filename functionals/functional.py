@@ -29,7 +29,9 @@ class Potential:
     These quantities are computed by solving ODEs, and their computation is done in the node.py file.
     '''
 
-    def __init__(self, linear: LinearFunctional, internal: InternalFunctional, interaction: InteractionFunctional):
+    def __init__(self, linear: Optional[LinearFunctional] = None, 
+                 internal: Optional[InternalFunctional] = None, 
+                 interaction: Optional[InteractionFunctional] = None):
         self.linear = linear
         self.internal = internal
         self.interaction = interaction
