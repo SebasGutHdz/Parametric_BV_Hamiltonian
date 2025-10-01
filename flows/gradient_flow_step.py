@@ -23,7 +23,7 @@ def move_to_device(pytree: Any, device) -> Any:
     return jax.tree.map(lambda x: jax.device_put(x, device) if isinstance(x, jax.Array) else x, pytree)
 
 
-def gradient_flow_step(node: nnx.Module, z_samples: Array, G_mat: G_matrix,
+def gradient_flow_step(parametric_model: nnx.Module, z_samples: Array, G_mat: G_matrix,
                                     potential: Potential, step_size: float = 0.01,
                                     solver: str = "minres", solver_tol: float = 1e-6,
                                     solver_maxiter: int = 50,regularization: float = 1e-6,only_return_params: bool = False) -> Tuple[Union[nnx.Module,PyTree], dict]:
@@ -31,7 +31,7 @@ def gradient_flow_step(node: nnx.Module, z_samples: Array, G_mat: G_matrix,
     Generic gradient flow step that works with any Potential
     
     Args:
-        node: Current Neural ODE model
+        parametric_model: Current ParametricModel instance
         z_samples: Reference samples for Monte Carlo estimation
         G_mat: G-matrix object for linear system solving
         potential: Potential instance
@@ -40,17 +40,17 @@ def gradient_flow_step(node: nnx.Module, z_samples: Array, G_mat: G_matrix,
         solver_maxiter: Maximum iterations for linear solver
         regularization: Regularization parameter used in regularized cg
     Returns:
-        updated_node: Node with updated parameters
+        updated_parametric_model: ParametricModel with updated parameters
         step_info: Dictionary with step diagnostics
     """
     
     # Get current parameters
-    _, current_params = nnx.split(node)
+    _, current_params = nnx.split(parametric_model)
     
     # Compute energy gradient using the potential
-    energy_grad,energy,energy_breakdown = potential.compute_energy_gradient(node, z_samples, current_params)
-    
-    # Solve linear system   
+    energy_grad,energy,energy_breakdown = potential.compute_energy_gradient(parametric_model, z_samples, current_params)
+
+    # Solve linear system
     # z_samples_g_mat = z_samples[::2]  # Use a subset of samples for G-matrix to save computation
 
     eta, solver_info = G_mat.solve_system(z_samples, energy_grad,
@@ -65,11 +65,11 @@ def gradient_flow_step(node: nnx.Module, z_samples: Array, G_mat: G_matrix,
 
     if only_return_params:
         return updated_params, {}
-    
-    # Create updated node
-    graphdef, _ = nnx.split(node)
-    updated_node = nnx.merge(graphdef, updated_params)
-    # updated_node = move_to_device(updated_node, device)
+
+    # Create updated parametric model
+    graphdef, _ = nnx.split(parametric_model)
+    updated_parametric_model = nnx.merge(graphdef, updated_params)
+    # updated_parametric_model = move_to_device(updated_parametric_model, device)
     # Compute diagnostics
     grad_norm = jnp.sqrt(sum(jax.tree.leaves(jax.tree.map(lambda x: jnp.sum(x**2), energy_grad))))
     eta_norm = jnp.sqrt(sum(jax.tree.leaves(jax.tree.map(lambda x: jnp.sum(x**2), eta))))
@@ -85,5 +85,5 @@ def gradient_flow_step(node: nnx.Module, z_samples: Array, G_mat: G_matrix,
         'interaction_energy': energy_breakdown['interaction_energy'],
         'step_size': step_size
     }
-    
-    return updated_node, step_info
+
+    return updated_parametric_model, step_info

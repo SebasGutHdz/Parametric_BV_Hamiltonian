@@ -10,7 +10,7 @@ import jax.numpy as jnp
 from flax import nnx
 import jax.scipy.stats as stats
 
-from architectures.node import NeuralODE
+from parametric_model.parametric_model import ParametricModel
 
 
 class InteractionPotential:
@@ -51,14 +51,14 @@ class InteractionPotential:
         z = x-y # (batch_size, d)
 
         return self.interaction_fn(z, **self.interaction_kwargs)
-    
-    def compute_energy_gradient(self, node: nnx.Module, z_samples: Array,
+
+    def compute_energy_gradient(self, parametric_model: ParametricModel, z_samples: Array,
                                params: Optional[PyTree] = None) -> PyTree:
         """
         Compute gradient of energy functional 
         
         Args:
-            node: Neural ODE model
+            parametric_model: ParametricModel instance
             x_samples: Samples from the distribution ρ, shape (batch_size, d)
             y_samples: Samples from the distribution ρ, shape (batch_size, d)
             params: Optional PyTree of parameters for the dynamics model
@@ -67,14 +67,14 @@ class InteractionPotential:
         """
 
         if params is None:
-            _,params = nnx.split(node)
+            _,params = nnx.split(parametric_model)
         
         def energy_functional(p: PyTree) -> Array:
             # with half of the z-samples define x, with the other half define y
             batch_size = z_samples.shape[0]
             mid_point = batch_size // 2
-            x_samples = node(z_samples[:mid_point,:], params=p) # (batch_size/2, d)
-            y_samples = node(z_samples[mid_point:,:], params=p) # (batch_size/2, d)
+            x_samples = parametric_model(z_samples[:mid_point,:], params=p) # (batch_size/2, d)
+            y_samples = parametric_model(z_samples[mid_point:,:], params=p) # (batch_size/2, d)
             # Make sure x_samples and y_samples have the same length
             if len(x_samples) < len(y_samples):
                 y_samples = y_samples[:len(x_samples),:]
@@ -88,8 +88,8 @@ class InteractionPotential:
         values,grad = jax.value_and_grad(energy_functional)(params)
 
         return grad,values
-    
-    def evaluate_energy(self, node: nnx.Module, z_samples: Array,x_samples: Optional[Array] = None,y_samples: Optional[Array] = None,
+
+    def evaluate_energy(self, parametric_model: ParametricModel, z_samples: Array,x_samples: Optional[Array] = None,y_samples: Optional[Array] = None,
                        params: Optional[PyTree] = None) -> tuple[Array, Array]:
         """
         Evaluate current energy F(ρ_θ)
@@ -103,13 +103,13 @@ class InteractionPotential:
             x_samples: Pushforward samples through the flow
         """
         if params is None:
-            _,params = nnx.split(node)
+            _,params = nnx.split(parametric_model)
         if x_samples is None or y_samples is None:
             # with half of the z-samples define x, with the other half define y
             batch_size = z_samples.shape[0]
             mid_point = batch_size // 2
-            x_samples = node(z_samples[:mid_point,:], params=params) # (batch_size/2, d)
-            y_samples = node(z_samples[mid_point:,:], params=params) # (batch_size/2, d)
+            x_samples = parametric_model(z_samples[:mid_point,:], params=params) # (batch_size/2, d)
+            y_samples = parametric_model(z_samples[mid_point:,:], params=params) # (batch_size/2, d)
             # Make sure x_samples and y_samples have the same length
             if len(x_samples) < len(y_samples):
                 y_samples = y_samples[:len(x_samples),:]

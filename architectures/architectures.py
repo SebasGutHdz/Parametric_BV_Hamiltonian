@@ -19,6 +19,10 @@ def SinTu(x: ArrayLike) -> Array:
 
     return jnp.sin(jnp.maximum(x,0.0))
 
+@api.jit
+def identity(x: ArrayLike) -> Array:
+    return x
+
 #Function from string to activation function
 
 def str_to_act_fn(name: str)-> Callable:
@@ -30,6 +34,8 @@ def str_to_act_fn(name: str)-> Callable:
         return nnx.tanh
     elif name == "SinTu":
         return SinTu
+    elif name == "identity":
+        return identity
     else:
         raise ValueError(f"Unknown activation function: {name}")
 

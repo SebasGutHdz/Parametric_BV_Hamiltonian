@@ -9,6 +9,7 @@ import jax
 import jax.numpy as jnp
 from flax import nnx
 import matplotlib.pyplot as plt
+from parametric_model.parametric_model import ParametricModel
 
 
 
@@ -50,25 +51,25 @@ class LinearPotential:
             Potential values of shape (batch_size,)
         """
         return self.potential_fn(x, **self.potential_kwargs)
-    
-    def compute_energy_gradient(self, node: nnx.Module, z_samples: Array, 
-                               params: Optional[PyTree] = None) -> PyTree:
+
+    def compute_energy_gradient(self, parametric_model: ParametricModel, z_samples: Array,
+                                 params: Optional[PyTree] = None) -> PyTree:
         """
         Compute gradient of energy functional 
         
         Args:
-            node: Neural ODE model
+            parametric_model: ParametricModel instance
             z_samples: Reference samples (batch_size, d)
             params: Parameters to evaluate gradient at (if None, uses current node params)
         Returns:
             Gradient 
         """
         if params is None:
-            _, params = nnx.split(node)
+            _, params = nnx.split(parametric_model)
         
         def energy_functional(p: PyTree) -> Array:
             # Transform reference samples through flow
-            x_samples = node(z_samples, params=p)
+            x_samples = parametric_model(z_samples, params=p)
             # Evaluate potential and average (Monte Carlo estimate)
             potential_values = self.potential_fn(x_samples, **self.potential_kwargs)
             return jnp.mean(potential_values)
@@ -76,11 +77,11 @@ class LinearPotential:
         values,grad = jax.value_and_grad(energy_functional)(params)
 
         return grad,values
-    
-    def evaluate_energy(self, node: nnx.Module, z_samples: Array,x_samples: Optional[Array] = None,
+
+    def evaluate_energy(self, parametric_model: ParametricModel, z_samples: Array,x_samples: Optional[Array] = None,
                        params: Optional[PyTree] = None) -> tuple[Array, Array]:
         """
-        Evaluate current energy F(ρ_θ)
+        Evaluate current energy F(rho_theta)
         
         Args:
             node: Neural ODE model
@@ -94,8 +95,8 @@ class LinearPotential:
         if x_samples is None:
             return_terminal = True
             if params is None:
-                _, params = nnx.split(node)
-            x_samples = node(z_samples, params=params)
+                _, params = nnx.split(parametric_model)
+            x_samples = parametric_model(z_samples, params=params)
         potential_values = self.potential_fn(x_samples, **self.potential_kwargs)
         if return_terminal:
             return jnp.mean(potential_values), x_samples

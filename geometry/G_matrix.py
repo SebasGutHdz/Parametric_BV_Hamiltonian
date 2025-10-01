@@ -132,12 +132,12 @@ class G_matrix:
 
         # Compute inner product using tree utilities
 
-        leaves_x, treedef = jax.tree.flatten(x)
+        # leaves_x, treedef = jax.tree.flatten(x)
 
-        leaves_Gy, _ = jax.tree.flatten(Gy)
+        # leaves_Gy, _ = jax.tree.flatten(Gy)
 
-        inner_product = sum([jnp.vdot(a, b) for a, b in zip(leaves_x, leaves_Gy)])
-
+        # inner_product = sum([jnp.vdot(a, b) for a, b in zip(leaves_x, leaves_Gy)])
+        inner_product = sum(jax.tree.leaves(jax.tree.map(lambda a, b: jnp.vdot(a, b), x, Gy)))
         return inner_product
 
 
@@ -160,9 +160,9 @@ class G_matrix:
             _,params = nnx.split(self.mapping)
 
         # Stop gradients for eta
-        eta = jax.lax.stop_gradient(eta)
+        eta_sg = jax.lax.stop_gradient(eta)
         # Compute the gradient of the inner product <eta, G eta> w.r.t. params
-        grad_fn = lambda p: self.inner_product(eta, eta, z_samples, p)
+        grad_fn = lambda p: self.inner_product(eta_sg, eta_sg, z_samples, p)
         grad_G = jax.grad(grad_fn)(params)
 
         return grad_G

@@ -9,7 +9,7 @@ import jax
 import jax.numpy as jnp
 from flax import nnx
 import jax.scipy.stats as stats
-
+from parametric_model.parametric_model import ParametricModel
 from architectures.node import NeuralODE
 
 
@@ -44,15 +44,15 @@ class InternalPotential:
         self.prob_dim = prob_dim
         self.method = method
 
-    def __call__(self,node:NeuralODE, z_samples: Array,z_trajectory: Optional[Array] = None,time_steps: Optional[Array] = None, 
+    def __call__(self,parametric_model: ParametricModel, z_samples: Array,z_trajectory: Optional[Array] = None,time_steps: Optional[Array] = None, 
                  params: Optional[PyTree] = None) -> Array:
 
         if params is not None:
-            grafdef,_ = nnx.split(node)
-            node = nnx.merge(grafdef, params)
+            grafdef,_ = nnx.split(parametric_model)
+            parametric_model = nnx.merge(grafdef, params)
         # Obtain trajectory for computation of internal energy
         if z_trajectory is None or time_steps is None:
-            z_trajectory,time_steps = node(z_samples, history=True) # (batch_size, time_steps, dim)
+            z_trajectory,time_steps = parametric_model(z_samples, history=True) # (batch_size, time_steps, dim)
             # For the first call, set the prob_dim
             if self.prob_dim is None:
                 self.prob_dim = z_trajectory.shape[-1]
@@ -61,7 +61,7 @@ class InternalPotential:
         if 'entropy' in self.functional:
             log_prob_init = stats.multivariate_normal.logpdf(z_samples, mean=jnp.zeros(self.prob_dim), cov=jnp.eye(self.prob_dim))
             # Input: t, xt, log_prob_init, method, params, log_trajectory
-            entropy = node.log_likelihood(t = time_steps,
+            entropy = parametric_model.log_likelihood(t = time_steps,
                                           xt= z_trajectory,
                                           log_prob_init= log_prob_init, 
                                           method = self.method,
@@ -74,7 +74,7 @@ class InternalPotential:
             # Initialize score
             score_init = - z_samples  # Score of standard normal
             # Input: t, xt, score_init, params, log_trajectory
-            score = node.score_function(t = time_steps,
+            score = parametric_model.score_function(t = time_steps,
                                         xt= z_trajectory,
                                         score_init= score_init,
                                         method = self.method,

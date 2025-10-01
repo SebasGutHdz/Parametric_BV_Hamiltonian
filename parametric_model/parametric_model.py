@@ -57,7 +57,7 @@ class ParametricModel(nnx.Module):
             raise ValueError(f"parametric_map must be one of {valid_maps}, got {parametric_map}")
         
         # Validate architecture
-        if len(architecture) != 3 or any(not isinstance(x, int) or x <= 0 for x in architecture):
+        if len(architecture) != 3 or any(not isinstance(x, int) or x < 0 for x in architecture):
             raise ValueError("architecture must be [input_dim, num_layers, width_layers] with positive integers")
         
         # Validate reference density
@@ -104,18 +104,22 @@ class ParametricModel(nnx.Module):
             self._initialize_node_model(din, dout, num_layers, width_layers, 
                                       activation_fn, rngs, kwargs)
         elif self.parametric_map == "resnet":
-            self.model = ResNet(din=din, num_layers=num_layers, 
-                              width_layers=width_layers, dout=dout,
-                              activation_fn=activation_fn, rngs=rngs)
+            # self.model = ResNet(din=din, num_layers=num_layers, 
+            #                   width_layers=width_layers, dout=dout,
+            #                   activation_fn=activation_fn, rngs=rngs)
+            self._initialize_resnet(din, dout, num_layers, width_layers, 
+                                  activation_fn, rngs, kwargs)
         else:  # mlp
-            self.model = MLP(din=din, num_layers=num_layers,
-                           width_layers=width_layers, dout=dout,
-                           activation_fn=activation_fn, rngs=rngs)
+            # self.model = MLP(din=din, num_layers=num_layers,
+            #                width_layers=width_layers, dout=dout,
+            #                activation_fn=activation_fn, rngs=rngs)
+            self._initialize_MLP(din, dout, num_layers, width_layers, 
+                                  activation_fn, rngs, kwargs)
         # Initialize parameters to be almost zero. 
         # This guarantees that the initial transport map is close to identity map    
-        graphdef, params = nnx.split(self.model)
-        params = jax.tree.map(lambda p: p * self.scale_factor, params)
-        self.model = nnx.merge(graphdef, params)
+        # graphdef, params = nnx.split(self.model)
+        # params = jax.tree.map(lambda p: p * self.scale_factor, params)
+        # self.model = nnx.merge(graphdef, params)
         
 
     def _initialize_node_model(self, din: int, dout: int, num_layers: int,
@@ -160,6 +164,44 @@ class ParametricModel(nnx.Module):
         #Store for the NODE solver to see
         # self.time_dependent = time_dependent
 
+    def _initialize_resnet(self, din: int, dout: int, num_layers: int,
+                             width_layers: int, activation_fn: str,
+                             rngs: nnx.Rngs, kwargs: Dict[str, Any]) -> None:
+        """
+        Initialize ResNet model. To guarantee that the initial map is close to identity,
+        we initialize the last layer weights and biases to be very small.
+        """
+        self.model = ResNet(din=din, num_layers=num_layers,
+                          width_layers=width_layers, dout=dout,
+                          activation_fn=activation_fn, rngs=rngs)
+        # Initialize parameters to be almost zero. 
+        # This guarantees that the initial transport map is close to identity map    
+        graphdef, params = nnx.split(self.model)
+        params = jax.tree.map(lambda p: p * self.scale_factor, params)
+        self.model = nnx.merge(graphdef, params)
+
+    def _initialize_MLP(self, din: int, dout: int, num_layers: int,
+                             width_layers: int, activation_fn: str,
+                             rngs: nnx.Rngs, kwargs: Dict[str, Any]) -> None:
+        """
+        Initialize MLP model. To guarantee that the initial map is close to identity,
+        We initialize the matrix of the layers to be the identity and the biases to be very small.
+        """
+        self.model = MLP(din=din, num_layers=num_layers,
+                          width_layers=width_layers, dout=dout,
+                          activation_fn=activation_fn, rngs=rngs)
+        # Initialize matrix of each layer to be identity and biases to be almost zero. 
+        # This guarantees that the initial transport map is close to identity map    
+        graphdef, params = nnx.split(self.model)
+
+        def init_layer(p):
+            if len(p.shape) == 2: # weight matrix
+                return jnp.eye(p.shape[0],p.shape[1]) + self.scale_factor * jax.random.normal(rngs.next(), p.shape)
+            else: # bias vector
+                return self.scale_factor * jax.random.normal(rngs.next(), p.shape)
+        params = jax.tree.map(init_layer, params)
+        self.model = nnx.merge(graphdef, params)
+
     def __call__(self, samples: jnp.ndarray, params: Optional[PyTree] = None,history: Optional[bool] = False ) -> jnp.ndarray:
         """
         Apply the parametric transport map T_θ(samples).
@@ -181,7 +223,7 @@ class ParametricModel(nnx.Module):
             return model(samples,history=history)
         if history and not self.is_node_model:
             warnings.warn("History flag is only applicable for NODE models. Ignoring.")
-            return model(samples)
+            return model(samples),_
         return model(samples)
 
     def sampler(self, key: jax.random.PRNGKey, num_samples: int) -> jnp.ndarray:

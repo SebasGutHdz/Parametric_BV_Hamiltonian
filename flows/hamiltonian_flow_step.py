@@ -19,13 +19,13 @@ import jax
 from jax import Device
 
 from geometry.G_matrix import G_matrix
-
+from parametric_model.parametric_model import ParametricModel
 from functionals.functional import Potential
 
 from tqdm import tqdm
 
 
-def hamiltonian_flow_step(node: nnx.Module, p_n: PyTree, z_samples: Array, G_mat: G_matrix,
+def hamiltonian_flow_step(parametric_model: ParametricModel, p_n: PyTree, z_samples: Array, G_mat: G_matrix,
                                     potential: Potential, step_size: float = 0.01,
                                     solver: str = "minres", solver_tol: float = 1e-6,
                                     solver_maxiter: int = 50,regularization: float = 1e-6, gamma: float = 1e-2,n_iters: int = 3,only_return_params: bool = False) -> Tuple[Union[nnx.Module,PyTree], dict]:
@@ -39,7 +39,7 @@ def hamiltonian_flow_step(node: nnx.Module, p_n: PyTree, z_samples: Array, G_mat
     Following equations 4.1a and 4.1b in the reference paper
     
     Args:
-        node: Current Neural ODE model
+        parametric_model: Current ParametricModel instance
         p_n: Current momentum PyTree
         z_samples: Reference samples for Monte Carlo estimation
         G_mat: G-matrix object for linear system solving
@@ -51,24 +51,25 @@ def hamiltonian_flow_step(node: nnx.Module, p_n: PyTree, z_samples: Array, G_mat
         gamma: Step size gradient descent step for the fixed point interation 
         n_iters: Number of fixed point iterations to perform
     Returns:
-        updated_node: Node with updated parameters
+        updated_parametric_model: ParametricModel with updated parameters
         step_info: Dictionary with step diagnostics
     """
-
+    
     # Get architecture and current parameters
-    graph_def, theta_n = nnx.split(node)
+    graph_def, theta_n = nnx.split(parametric_model)
     # Update theta using symplectic Euler step
     alpha,xi = fixed_point_solver(z_samples=z_samples,theta_n=theta_n,p_n=p_n,G_mat=G_mat,h=step_size,gamma=gamma,n_iters=n_iters,
                                   solver=solver,maxiter=solver_maxiter,tol=solver_tol,regularization=regularization)
+    xi_detached = jax.tree.map(lambda x: jax.lax.stop_gradient(x), xi)
     # Compute the terms for the update of p:
-    grad_g_mat = G_mat.metric_derivative_quadratic_form(z_samples=z_samples, eta=xi, params=alpha)
+    grad_g_mat = G_mat.metric_derivative_quadratic_form(z_samples=z_samples, eta=xi_detached, params=alpha)
     # 2. Compute energy gradient using the potential
-    energy_grad,energy,energy_breakdown = potential.compute_energy_gradient(node = node,z_samples= z_samples, params=alpha)
+    energy_grad,energy,energy_breakdown = potential.compute_energy_gradient(parametric_model=parametric_model,z_samples=z_samples, params=alpha)
     # 3 Update p using Euler scheme
-    p_new = jax.tree.map(lambda p, grad_g, grad_f: p + 0.5 * step_size * (grad_g - grad_f), p_n, grad_g_mat, energy_grad)
-    #
-
-    updated_node = nnx.merge(graph_def, alpha)
+    p_new = jax.tree.map(lambda p, grad_g, grad_f: p +  step_size * (0.5*grad_g - grad_f), p_n, grad_g_mat, energy_grad)
+    
+    updated_parametric_model = nnx.merge(graph_def, alpha)
+    
     step_info = {
         "energy": energy,
         'energy': energy,
@@ -78,7 +79,7 @@ def hamiltonian_flow_step(node: nnx.Module, p_n: PyTree, z_samples: Array, G_mat
         'step_size': step_size
     }
 
-    return updated_node, p_new, step_info
+    return updated_parametric_model, p_new, step_info
 
 
 def fixed_point_solver(z_samples: Array, theta_n: PyTree, p_n: PyTree, G_mat: G_matrix, h: float, gamma: float = 1e-2,n_iters: int = 3,
@@ -123,7 +124,7 @@ def compute_hamiltonian(theta: PyTree, p: PyTree, z_samples: Array,
     kinetic = 0.5 * sum(jax.tree.leaves(jax.tree.map(lambda a, b: jnp.sum(a * b), p, h)))
     graph_def,_ = nnx.split(G_mat.mapping)
     # Potential energy  
-    temp_node = nnx.merge(graph_def, theta)
-    _, potential_energy, _ = potential.evaluate_energy(temp_node, z_samples, theta)
-    
+    temp_parametric_model = nnx.merge(graph_def, theta)
+    _, potential_energy, _ = potential.evaluate_energy(temp_parametric_model, z_samples, theta)
+
     return kinetic + potential_energy
