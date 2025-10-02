@@ -104,22 +104,12 @@ class ParametricModel(nnx.Module):
             self._initialize_node_model(din, dout, num_layers, width_layers, 
                                       activation_fn, rngs, kwargs)
         elif self.parametric_map == "resnet":
-            # self.model = ResNet(din=din, num_layers=num_layers, 
-            #                   width_layers=width_layers, dout=dout,
-            #                   activation_fn=activation_fn, rngs=rngs)
             self._initialize_resnet(din, dout, num_layers, width_layers, 
                                   activation_fn, rngs, kwargs)
-        else:  # mlp
-            # self.model = MLP(din=din, num_layers=num_layers,
-            #                width_layers=width_layers, dout=dout,
-            #                activation_fn=activation_fn, rngs=rngs)
+        else:  
             self._initialize_MLP(din, dout, num_layers, width_layers, 
                                   activation_fn, rngs, kwargs)
-        # Initialize parameters to be almost zero. 
-        # This guarantees that the initial transport map is close to identity map    
-        # graphdef, params = nnx.split(self.model)
-        # params = jax.tree.map(lambda p: p * self.scale_factor, params)
-        # self.model = nnx.merge(graphdef, params)
+        
         
 
     def _initialize_node_model(self, din: int, dout: int, num_layers: int,
@@ -223,7 +213,7 @@ class ParametricModel(nnx.Module):
             return model(samples,history=history)
         if history and not self.is_node_model:
             warnings.warn("History flag is only applicable for NODE models. Ignoring.")
-            return model(samples),_
+            return model(samples),None
         return model(samples)
 
     def sampler(self, key: jax.random.PRNGKey, num_samples: int) -> jnp.ndarray:

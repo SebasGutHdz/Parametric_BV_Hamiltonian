@@ -36,6 +36,10 @@ def str_to_act_fn(name: str)-> Callable:
         return SinTu
     elif name == "identity":
         return identity
+    elif name == "gelu":
+        return nnx.gelu
+    elif name == "swish":
+        return nnx.swish
     else:
         raise ValueError(f"Unknown activation function: {name}")
 
@@ -104,6 +108,7 @@ class ResBlock(nnx.Module):
         
     def __call__(self, x: Array) -> Array:
         identity = x
+        print(x.shape,self.din,self.dout)
         out = self.layer1(x)
         out = self.activation(out)
         out = self.layer2(out)
@@ -129,8 +134,10 @@ class ResNet(nnx.Module):
         in_dim = din
 
         for _ in range(num_layers):
+            
             layers.append(ResBlock(in_dim,width_layers,in_dim,activation_fn,rngs))
-            in_dim = width_layers
+            # in_dim = width_layers
+            # Q: how to use a latent intermediary space?
 
         # output layer (no activation)
         layers.append(ResBlock(in_dim,width_layers,dout,activation_fn,rngs))
@@ -139,8 +146,11 @@ class ResNet(nnx.Module):
 
     def __call__(self, x: Array) -> Array:
         
-        for layer in self.layers:
+        # for layer in self.layers:
+        for i ,layer in enumerate(self.layers):
+            print(f"Layer {i}: input shape {x.shape}")
             x = layer(x)
+            print(f"Layer {i}: output shape {x.shape}")
         return x
 
 
