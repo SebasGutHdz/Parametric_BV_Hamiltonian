@@ -108,7 +108,7 @@ class ResBlock(nnx.Module):
         
     def __call__(self, x: Array) -> Array:
         identity = x
-        print(x.shape,self.din,self.dout)
+        
         out = self.layer1(x)
         out = self.activation(out)
         out = self.layer2(out)
@@ -146,11 +146,11 @@ class ResNet(nnx.Module):
 
     def __call__(self, x: Array) -> Array:
         
-        # for layer in self.layers:
-        for i ,layer in enumerate(self.layers):
-            print(f"Layer {i}: input shape {x.shape}")
+        
+        for layer in self.layers:
+            
             x = layer(x)
-            print(f"Layer {i}: output shape {x.shape}")
+            
         return x
 
 
