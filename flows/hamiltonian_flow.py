@@ -71,10 +71,8 @@ def compute_hamiltonian(theta: PyTree, p: PyTree, z_samples: Array,
     # Need to create a temporary parametric_model to evaluate potential
     graphdef, _ = nnx.split(G_mat.mapping)
     temp_parametric_model = nnx.merge(graphdef, theta)
-    potential_energy, x_samples, _, _, _ = potential.evaluate_energy(temp_parametric_model, z_samples, theta)
+    potential_energy, _, _, _, _ = potential.evaluate_energy(temp_parametric_model, z_samples, theta)
     
-
-    print(f"Potential Energy: {potential_energy}, Kinetic Energy: {kinetic}")
 
     # Total Hamiltonian
     hamiltonian = kinetic + potential_energy
@@ -181,9 +179,6 @@ def run_hamiltonian_flow(parametric_model: nnx.Module,
         # Compute current Hamiltonian for conservation tracking
         _, current_params = nnx.split(current_parametric_model)
         
-        current_hamiltonian = compute_hamiltonian(
-            current_params, current_momentum, test_data_set, G_mat, potential
-        )
         
         # Compute norms for diagnostics
         momentum_norm = jnp.sqrt(sum(jax.tree.leaves(jax.tree.map(lambda x: jnp.sum(x**2), current_momentum))))
@@ -192,18 +187,16 @@ def run_hamiltonian_flow(parametric_model: nnx.Module,
         
         # Store diagnostics
         energy_history.append(float(step_info['energy']))
-        hamiltonian_history.append(float(current_hamiltonian))
+        
         momentum_norms.append(float(momentum_norm))
         param_norms.append(float(param_norm))
         
         # Compute Hamiltonian drift
-        hamiltonian_drift = abs(current_hamiltonian - initial_hamiltonian)
+        
         
         # Update progress bar
         p_bar.set_postfix({
             'Energy': f"{step_info['energy']:.6f}",
-            'Hamiltonian': f"{current_hamiltonian:.6f}",
-            'H_drift': f"{hamiltonian_drift:.2e}",
             'Linear': f"{step_info['linear_energy']:.6f}",
             'Internal': f"{step_info['internal_energy']:.6f}",
             'Interaction': f"{step_info['interaction_energy']:.6f}",
@@ -213,10 +206,13 @@ def run_hamiltonian_flow(parametric_model: nnx.Module,
         
         # Detailed progress reporting
         if (iteration % progress_every == 0 and iteration > 0) or iteration == max_iterations - 2:
-            print(current_params)
             current_energy, samples1, _, _, _ = potential.evaluate_energy(current_parametric_model, test_data_set, current_params)
             sample_history.append(samples1)
-
+            current_hamiltonian = compute_hamiltonian(
+                current_params, current_momentum, test_data_set, G_mat, potential
+            )
+            hamiltonian_history.append(float(current_hamiltonian))
+            hamiltonian_drift = float(current_hamiltonian - initial_hamiltonian)
             average_displacement = jnp.mean(jnp.linalg.norm(samples1 - samples0, axis=1))
             
             print(f"Iter {iteration:3d}: Energy = {step_info['energy']:.6f}, "
@@ -285,12 +281,12 @@ def run_hamiltonian_flow(parametric_model: nnx.Module,
             # Update samples for next comparison
             samples0 = samples1
             
-        # Early stopping conditions
-        if hamiltonian_drift > 10 * tolerance:  # Large drift indicates instability
-            print(f"Warning: Large Hamiltonian drift {hamiltonian_drift:.2e} at iteration {iteration}")
+        # # Early stopping conditions
+        # if hamiltonian_drift > 10 * tolerance:  # Large drift indicates instability
+        #     print(f"Warning: Large Hamiltonian drift {hamiltonian_drift:.2e} at iteration {iteration}")
         
-        if iteration > 5 and hamiltonian_drift < tolerance * 1e-3:
-            print(f"Excellent Hamiltonian conservation at iteration {iteration}")
+        # if iteration > 5 and hamiltonian_drift < tolerance * 1e-3:
+        #     print(f"Excellent Hamiltonian conservation at iteration {iteration}")
                 
     # Final summary
     final_energy = energy_history[-1]
