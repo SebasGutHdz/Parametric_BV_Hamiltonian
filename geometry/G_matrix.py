@@ -74,7 +74,7 @@ class G_matrix:
         return jax.tree.map(lambda x: jnp.mean(x, axis=0), contributions)
     
     # @partial(jit,static_argnums = (0,6))
-    def solve_system(self,z_samples: Array, b: PyTree, params: Optional[PyTree] = None, tol: float = 1e-5, maxiter: int = 10, method: str = "cg",regularization: float = 1e-6, x0: Optional[PyTree] = None) -> PyTree:
+    def solve_system(self,z_samples: Array, b: PyTree, params: Optional[PyTree] = None, tol: float = 1e-5, maxiter: int = 10, method: str = "minres",regularization: float = 1e-6, x0: Optional[PyTree] = None) -> PyTree:
 
         '''
         Solve G(theta) x = b using conjugate gradient method

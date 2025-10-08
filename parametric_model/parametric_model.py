@@ -151,6 +151,16 @@ class ParametricModel(nnx.Module):
             time_dependent=time_dependent,
             dt0=dt0
         )
+        graphdef, params = nnx.split(self.model)
+        # params = jax.tree.map(lambda p: p * self.scale_factor, params)
+        def init_layer(p):
+            if len(p.shape) == 2: # weight matrix
+                return self.scale_factor * p
+            else: # bias vector        
+                return self.scale_factor * p
+        params = jax.tree.map(init_layer, params)
+        self.model = nnx.merge(graphdef, params)
+        self.dynamics = self.model.dynamics
         #Store for the NODE solver to see
         # self.time_dependent = time_dependent
 
