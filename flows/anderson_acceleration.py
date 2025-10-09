@@ -13,12 +13,14 @@ import matplotlib.pyplot as plt
 from jax import Device
 
 from geometry.G_matrix import G_matrix
+from geometry.lin_alg_solvers import minres
 from flows.gradient_flow_step import gradient_flow_step
 
 from functionals.functional import Potential
+from parametric_model.parametric_model import ParametricModel
 
 def anderson_step(
-        node: nnx.Module,
+        parametric_model: ParametricModel,
         current_params: PyTree,
         param_history: List[PyTree],  # at most m entries
         residual_history: List[PyTree],  # at most m entries
@@ -29,7 +31,7 @@ def anderson_step(
         memory_size: int = 5,
         mixing_parameter: float = 1.0,
         anderson_tol: float = 1e-6,
-        solver: str = "cg",
+        solver: str = "minres",
         solver_tol: float = 1e-6,
         solver_maxiter: int = 50,
         regularization: float = 1e-6
@@ -37,7 +39,7 @@ def anderson_step(
     '''
     Anderson acceleration step for fixed-point iteration.
     Args:
-        node: Neural ODE model
+        parametric_model: ParametricModel instance
         current_params: Current parameters of the model
         param_history: List of previous parameters (at most memory_size entries)
         residual_history: List of previous residuals (at most memory_size entries)
@@ -64,7 +66,7 @@ def anderson_step(
     if hist_len == 0:
         # No history, perform a standard gradient flow step
         new_params, _ = gradient_flow_step(
-            node = node,
+            parametric_model= parametric_model,
             z_samples = z_samples,
             G_mat = G_mat,
             potential = potential,
@@ -76,14 +78,14 @@ def anderson_step(
             only_return_params=True
         )
         current_residual = compute_fixed_point_residual(
-            node, current_params, G_mat, potential, z_samples,
+            parametric_model, current_params, G_mat, potential, z_samples,
             step_size, solver, solver_tol, regularization
         )
         return new_params, [current_params], [current_residual], {}
     
     # Compute fixed-point residuals for current parameter
     current_residual = compute_fixed_point_residual(
-        node, current_params, G_mat, potential, z_samples,
+        parametric_model, current_params, G_mat, potential, z_samples,
         step_size, solver, solver_tol, regularization
     )
     # Build difference matrices 
@@ -111,7 +113,7 @@ def anderson_step(
     mixed_residual = current_residual
     for i,gamma_i in enumerate(gamma):
         mixed_residual = jax.tree.map(lambda a,b: a -gamma_i * b, mixed_residual, residual_diffs[i])
-    # Check for the mixing parameter (should be here?)
+    
     delta_theta = jax.tree.map(lambda x: mixing_parameter * x, mixed_residual)
     for i,gamma_i in enumerate(gamma):
         delta_theta = jax.tree.map(lambda step,dx: step -gamma_i * dx, delta_theta, param_diffs[i])
@@ -125,7 +127,7 @@ def anderson_step(
 
     
 def compute_fixed_point_residual(
-    node: nnx.Module,
+    parametric_model: nnx.Module,
         params: PyTree,
         G_mat: G_matrix, 
         potential: Potential,
@@ -138,7 +140,7 @@ def compute_fixed_point_residual(
     '''
     Compute fixed point residual r = -h * G^{-1} grad F(p) for parameters p
     Args:
-        node: Neural ODE model
+        parametric_model: Neural ODE model
         params: Current parameters of the model
         G_mat: G_matrix object to compute inner products
         potential: Potential object to compute energy and gradient
@@ -152,7 +154,7 @@ def compute_fixed_point_residual(
     '''
 
     # Compute energy gradient using the potential
-    energy_grad,energy,energy_breakdown = potential.compute_energy_gradient(node, z_samples, params)
+    energy_grad,energy,energy_breakdown = potential.compute_energy_gradient(parametric_model, z_samples, params)
     # Solve linear system
     eta, solver_info = G_mat.solve_system(z_samples, energy_grad,
                                             params=params,
@@ -199,13 +201,20 @@ def compute_anderson_gamma(
         b[i] = G_mat.inner_product(current_residual, residual_differences[i], z_samples)
     
     # Solve the linear system A gamma = b
-    try:
-        gamma, info = jla.solve(A + tol * jnp.eye(m), b, sym_pos=True, assume_a='pos', overwrite_a=False, overwrite_b=False, check_finite=False)
-        converged = True
-    except jla.LinAlgError:
-        gamma = jnp.linalg.pinv(A + tol * jnp.eye(m)) @ b
-        converged = False
-        info = {}
+    # try:
+    #     gamma, info = jla.solve(A + tol * jnp.eye(m), b, sym_pos=True, assume_a='pos', overwrite_a=False, overwrite_b=False, check_finite=False)
+    #     converged = True
+    # except jla.LinAlgError:
+    #     gamma = jnp.linalg.pinv(A + tol * jnp.eye(m)) @ b
+    #     converged = False
+    #     info = {}
+    gamma,info = minres(
+        A_func=lambda x: jnp.dot(A, x),
+        b=b,
+        tol=tol,
+        maxiter=100
+    )
+    converged = info.get('success', False)
 
     return gamma.tolist(), {'converged': converged}
     

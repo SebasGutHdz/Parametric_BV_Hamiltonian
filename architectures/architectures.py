@@ -70,7 +70,9 @@ class MLP(nnx.Module):
             in_dim = width_layers
 
         # output layer (no activation)
-        layers.append(nnx.Linear(in_dim, dout, rngs=rngs))
+        layers.append(nnx.Linear(in_dim, dout, rngs=rngs,
+                                 kernel_init = xavier_uniform(),
+                                 bias_init = normal(stddev = 1e-3)))
         
         self.layers = layers
 

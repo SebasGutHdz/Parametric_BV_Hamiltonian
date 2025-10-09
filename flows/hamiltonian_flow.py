@@ -259,16 +259,17 @@ def run_hamiltonian_flow(parametric_model: nnx.Module,
                         label=f'Iteration {max(0, iteration-progress_every)}')
             ax2d.scatter(samples1[:,0], samples1[:,1], color='red', s=5, alpha=0.8, 
                         label=f'Iteration {iteration}')
-            ax2d.set_title(f"Contour View - Iteration {iteration}")
+            ax2d.set_title(f"Contour View -time step h={h*(iteration+1):.3f}")
             ax2d.legend()
 
             # Hamiltonian conservation plot
             ax_cons = fig.add_subplot(1, 3, 3)
-            iterations_so_far = list(range(len(hamiltonian_history)))
+            # iterations_so_far = list(range(len(hamiltonian_history)))*h
+            iterations_so_far = jnp.linspace(0,len(hamiltonian_history)-1,len(hamiltonian_history))*h
             ax_cons.plot(iterations_so_far, hamiltonian_history, 'b-', label='Hamiltonian')
             ax_cons.axhline(y=initial_hamiltonian, color='r', linestyle='--', alpha=0.5, 
                             label=f'Initial H = {initial_hamiltonian:.4f}')
-            ax_cons.set_xlabel('Iteration')
+            ax_cons.set_xlabel('Time Step')
             ax_cons.set_ylabel('Hamiltonian')
             ax_cons.set_title('Hamiltonian Conservation')
             ax_cons.legend()

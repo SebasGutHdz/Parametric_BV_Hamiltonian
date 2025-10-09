@@ -86,6 +86,12 @@ def zero_potential_fn(x: Array) -> Array:
     """
     return jnp.zeros(x.shape[0])
 
+@jax.jit
+def harmonic_potential_fn(x: Array, omega: float = 1.0) -> Array:
+    """Harmonic potential U(x) = 0.5 * |x|²
+    """
+    return 0.5 *((1/2)*x[:,0]**2 + (1/3)*x[:,1]**2)
+
 
 # Create different potential instances
 def create_potentials():
